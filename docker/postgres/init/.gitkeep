@@ -1,0 +1,5 @@
+# PostgreSQL initialization scripts
+
+SQL files placed in this directory are executed automatically when the PostgreSQL container is created for the first time.
+
+No initialization scripts are required at this stage.
