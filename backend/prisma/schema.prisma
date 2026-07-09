@@ -7,4 +7,77 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Models will be defined in future iterations.
+enum PerfilUsuario {
+  ALUNO
+  PROFESSOR
+
+  @@map("perfil_usuario")
+}
+
+model Usuario {
+  id              String        @id @default(uuid()) @db.Uuid
+  nomeCompleto    String        @map("nome_completo")
+  email           String        @unique
+  senha           String
+  fotoPerfil      String?       @map("foto_perfil")
+  perfil          PerfilUsuario
+  escolaId        String        @map("escola_id") @db.Uuid
+  turmaId         String?       @map("turma_id") @db.Uuid
+  disciplinaId    String?       @map("disciplina_id") @db.Uuid
+  pontuacao       Int           @default(0)
+  nivel           Int           @default(1)
+  dataCriacao     DateTime      @default(now()) @map("data_criacao")
+  dataAtualizacao DateTime      @updatedAt @map("data_atualizacao")
+
+  escola     Escola      @relation(fields: [escolaId], references: [id])
+  turma      Turma?      @relation(fields: [turmaId], references: [id])
+  disciplina Disciplina? @relation(fields: [disciplinaId], references: [id])
+
+  @@index([escolaId])
+  @@index([turmaId])
+  @@index([disciplinaId])
+  @@map("usuarios")
+}
+
+model Escola {
+  id              String   @id @default(uuid()) @db.Uuid
+  nome            String
+  cidade          String?
+  estado          String?
+  dataCriacao     DateTime @default(now()) @map("data_criacao")
+  dataAtualizacao DateTime @updatedAt @map("data_atualizacao")
+
+  turmas   Turma[]
+  usuarios Usuario[]
+
+  @@index([nome])
+  @@map("escolas")
+}
+
+model Turma {
+  id              String   @id @default(uuid()) @db.Uuid
+  nome            String
+  escolaId        String   @map("escola_id") @db.Uuid
+  dataCriacao     DateTime @default(now()) @map("data_criacao")
+  dataAtualizacao DateTime @updatedAt @map("data_atualizacao")
+
+  escola Escola    @relation(fields: [escolaId], references: [id])
+  alunos Usuario[]
+
+  @@index([escolaId])
+  @@index([nome])
+  @@map("turmas")
+}
+
+model Disciplina {
+  id              String   @id @default(uuid()) @db.Uuid
+  nome            String
+  descricao       String?
+  dataCriacao     DateTime @default(now()) @map("data_criacao")
+  dataAtualizacao DateTime @updatedAt @map("data_atualizacao")
+
+  professores Usuario[]
+
+  @@index([nome])
+  @@map("disciplinas")
+}
