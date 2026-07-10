@@ -39,6 +39,7 @@ model Usuario {
 
   disciplina Disciplina? @relation(fields: [disciplinaId], references: [id])
   publicacoes Publicacao[]
+  comentarios Comentario[]
 
   @@index([escola])
   @@index([turma])
@@ -65,6 +66,7 @@ model Publicacao {
   descricao       String
   imagemUrl       String?          @map("imagem_url")
   status          StatusPublicacao @default(PENDENTE)
+  quantidadeComentarios Int        @default(0) @map("quantidade_comentarios")
   usuarioId       String           @map("usuario_id") @db.Uuid
   disciplinaId    String           @map("disciplina_id") @db.Uuid
   dataCriacao     DateTime         @default(now()) @map("data_criacao")
@@ -72,10 +74,28 @@ model Publicacao {
 
   usuario    Usuario    @relation(fields: [usuarioId], references: [id])
   disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
+  comentarios Comentario[]
 
   @@index([usuarioId])
   @@index([disciplinaId])
   @@index([status])
   @@index([dataCriacao])
   @@map("publicacoes")
+}
+
+model Comentario {
+  id              String   @id @default(uuid()) @db.Uuid
+  conteudo        String
+  usuarioId       String   @map("usuario_id") @db.Uuid
+  publicacaoId    String   @map("publicacao_id") @db.Uuid
+  dataCriacao     DateTime @default(now()) @map("data_criacao")
+  dataAtualizacao DateTime @updatedAt @map("data_atualizacao")
+
+  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
+  publicacao Publicacao @relation(fields: [publicacaoId], references: [id])
+
+  @@index([usuarioId])
+  @@index([publicacaoId])
+  @@index([dataCriacao])
+  @@map("comentarios")
 }
