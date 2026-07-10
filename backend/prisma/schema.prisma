@@ -14,6 +14,14 @@ enum PerfilUsuario {
   @@map("perfil_usuario")
 }
 
+enum StatusPublicacao {
+  PENDENTE
+  APROVADA
+  REPROVADA
+
+  @@map("status_publicacao")
+}
+
 model Usuario {
   id              String        @id @default(uuid()) @db.Uuid
   nomeCompleto    String        @map("nome_completo")
@@ -30,6 +38,7 @@ model Usuario {
   dataAtualizacao DateTime      @updatedAt @map("data_atualizacao")
 
   disciplina Disciplina? @relation(fields: [disciplinaId], references: [id])
+  publicacoes Publicacao[]
 
   @@index([escola])
   @@index([turma])
@@ -45,6 +54,28 @@ model Disciplina {
   dataAtualizacao DateTime @updatedAt @map("data_atualizacao")
 
   professores Usuario[]
+  publicacoes  Publicacao[]
 
   @@map("disciplinas")
+}
+
+model Publicacao {
+  id              String           @id @default(uuid()) @db.Uuid
+  titulo          String
+  descricao       String
+  imagemUrl       String?          @map("imagem_url")
+  status          StatusPublicacao @default(PENDENTE)
+  usuarioId       String           @map("usuario_id") @db.Uuid
+  disciplinaId    String           @map("disciplina_id") @db.Uuid
+  dataCriacao     DateTime         @default(now()) @map("data_criacao")
+  dataAtualizacao DateTime         @updatedAt @map("data_atualizacao")
+
+  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
+  disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
+
+  @@index([usuarioId])
+  @@index([disciplinaId])
+  @@index([status])
+  @@index([dataCriacao])
+  @@map("publicacoes")
 }
