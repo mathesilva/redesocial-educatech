@@ -39,13 +39,12 @@ model Usuario {
 
 model Disciplina {
   id              String   @id @default(uuid()) @db.Uuid
-  nome            String
+  nome            String   @unique
   descricao       String?
   dataCriacao     DateTime @default(now()) @map("data_criacao")
   dataAtualizacao DateTime @updatedAt @map("data_atualizacao")
 
   professores Usuario[]
 
-  @@index([nome])
   @@map("disciplinas")
 }
