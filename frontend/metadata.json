@@ -1,0 +1,6 @@
+{
+  "name": "Educatech",
+  "description": "Plataforma de rede social Educatech interativa com design moderno, recursos de gamificação e painéis completos para alunos e professores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
