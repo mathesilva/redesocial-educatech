@@ -1,6 +1,7 @@
+import type { PerfilUsuario } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-import { UnauthorizedError } from "../../shared/errors/index.js";
+import { ForbiddenError, UnauthorizedError } from "../../shared/errors/index.js";
 import type { AuthTokenPayloadDto } from "./dto.js";
 import { AuthService } from "./service.js";
 
@@ -26,6 +27,18 @@ export function autenticar(app: FastifyInstance) {
       }
 
       throw new UnauthorizedError(obterMensagemToken(error));
+    }
+  };
+}
+
+export function permitirPerfis(perfis: PerfilUsuario[]) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    void reply;
+
+    const usuario = request.usuarioAutenticado;
+
+    if (!usuario || !perfis.includes(usuario.perfil)) {
+      throw new ForbiddenError("Acesso negado.");
     }
   };
 }
