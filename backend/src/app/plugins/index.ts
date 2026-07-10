@@ -1,10 +1,10 @@
+import fastifyJwt from "@fastify/jwt";
 import type { FastifyInstance } from "fastify";
 
-/**
- * Plugin registration entry point.
- * Future plugins (JWT, CORS, Prisma, etc.) will be registered here.
- */
+import { env } from "../../config/env.js";
+
 export function registerPlugins(app: FastifyInstance): void {
-  void app;
-  // Plugins will be registered in future iterations.
+  void app.register(fastifyJwt, {
+    secret: env.JWT_SECRET,
+  });
 }
