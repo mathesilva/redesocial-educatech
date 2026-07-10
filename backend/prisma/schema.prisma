@@ -22,6 +22,12 @@ enum StatusPublicacao {
   @@map("status_publicacao")
 }
 
+enum TipoReacao {
+  CURTIDA
+
+  @@map("tipo_reacao")
+}
+
 model Usuario {
   id              String        @id @default(uuid()) @db.Uuid
   nomeCompleto    String        @map("nome_completo")
@@ -40,6 +46,7 @@ model Usuario {
   disciplina Disciplina? @relation(fields: [disciplinaId], references: [id])
   publicacoes Publicacao[]
   comentarios Comentario[]
+  reacoes     Reacao[]
 
   @@index([escola])
   @@index([turma])
@@ -67,6 +74,7 @@ model Publicacao {
   imagemUrl       String?          @map("imagem_url")
   status          StatusPublicacao @default(PENDENTE)
   quantidadeComentarios Int        @default(0) @map("quantidade_comentarios")
+  quantidadeCurtidas    Int        @default(0) @map("quantidade_curtidas")
   usuarioId       String           @map("usuario_id") @db.Uuid
   disciplinaId    String           @map("disciplina_id") @db.Uuid
   dataCriacao     DateTime         @default(now()) @map("data_criacao")
@@ -75,6 +83,7 @@ model Publicacao {
   usuario    Usuario    @relation(fields: [usuarioId], references: [id])
   disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
   comentarios Comentario[]
+  reacoes     Reacao[]
 
   @@index([usuarioId])
   @@index([disciplinaId])
@@ -98,4 +107,20 @@ model Comentario {
   @@index([publicacaoId])
   @@index([dataCriacao])
   @@map("comentarios")
+}
+
+model Reacao {
+  id           String     @id @default(uuid()) @db.Uuid
+  usuarioId    String     @map("usuario_id") @db.Uuid
+  publicacaoId String     @map("publicacao_id") @db.Uuid
+  tipo         TipoReacao @default(CURTIDA)
+  dataCriacao  DateTime   @default(now()) @map("data_criacao")
+
+  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
+  publicacao Publicacao @relation(fields: [publicacaoId], references: [id])
+
+  @@unique([usuarioId, publicacaoId])
+  @@index([usuarioId])
+  @@index([publicacaoId])
+  @@map("reacoes")
 }
