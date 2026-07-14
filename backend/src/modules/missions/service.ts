@@ -1,9 +1,18 @@
-import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors/index.js";
+import { Prisma } from "@prisma/client";
+
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "../../shared/errors/index.js";
 import type {
   CriarMissaoDto,
+  CriarRespostaMissaoDto,
   ListarMissoesDto,
   ListarMissoesRespostaDto,
   MissaoRespostaDto,
+  RespostaMissaoRespostaDto,
   UsuarioMissaoDto,
 } from "./dto.js";
 import { MissionsRepository } from "./repository.js";
@@ -75,6 +84,75 @@ export class MissionsService {
     return this.mapearMissao(missao);
   }
 
+  public async responder(
+    missaoId: string,
+    dados: CriarRespostaMissaoDto,
+    usuario: UsuarioMissaoDto,
+  ): Promise<RespostaMissaoRespostaDto> {
+    if (usuario.perfil !== "ALUNO") {
+      throw new ForbiddenError("Somente alunos podem responder missoes.");
+    }
+
+    const missao = await this.repository.buscarPorId(missaoId);
+
+    if (!missao) {
+      throw new NotFoundError("Missao nao encontrada.");
+    }
+
+    if (missao.prazo <= new Date()) {
+      throw new BadRequestError("Nao e permitido responder missao vencida.");
+    }
+
+    const respostaExistente = await this.repository.buscarRespostaPorAlunoEMissao(
+      usuario.id,
+      missaoId,
+    );
+
+    if (respostaExistente) {
+      throw new ConflictError("Aluno ja enviou resposta para esta missao.");
+    }
+
+    try {
+      const resposta = await this.repository.criarResposta({
+        resposta: dados.resposta,
+        imagemUrl: dados.imagemUrl ?? null,
+        alunoId: usuario.id,
+        missaoId,
+      });
+
+      return this.mapearRespostaMissao(resposta);
+    } catch (error) {
+      if (this.eErroRestricaoUnica(error)) {
+        throw new ConflictError("Aluno ja enviou resposta para esta missao.");
+      }
+
+      throw error;
+    }
+  }
+
+  public async buscarMinhaResposta(
+    missaoId: string,
+    usuario: UsuarioMissaoDto,
+  ): Promise<RespostaMissaoRespostaDto> {
+    if (usuario.perfil !== "ALUNO") {
+      throw new ForbiddenError("Somente alunos podem consultar sua resposta.");
+    }
+
+    const missao = await this.repository.buscarPorId(missaoId);
+
+    if (!missao) {
+      throw new NotFoundError("Missao nao encontrada.");
+    }
+
+    const resposta = await this.repository.buscarRespostaPorAlunoEMissao(usuario.id, missaoId);
+
+    if (!resposta) {
+      throw new NotFoundError("Resposta da missao nao encontrada.");
+    }
+
+    return this.mapearRespostaMissao(resposta);
+  }
+
   private mapearMissao(missao: MissaoComRelacoes): MissaoRespostaDto {
     return {
       id: missao.id,
@@ -95,5 +173,25 @@ export class MissionsService {
       },
       dataCriacao: missao.dataCriacao,
     };
+  }
+
+  private mapearRespostaMissao(resposta: {
+    resposta: string;
+    status: RespostaMissaoRespostaDto["status"];
+    nota: number | null;
+    feedbackProfessor: string | null;
+    dataEnvio: Date;
+  }): RespostaMissaoRespostaDto {
+    return {
+      resposta: resposta.resposta,
+      status: resposta.status,
+      nota: resposta.nota,
+      feedbackProfessor: resposta.feedbackProfessor,
+      dataEnvio: resposta.dataEnvio,
+    };
+  }
+
+  private eErroRestricaoUnica(error: unknown): boolean {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
   }
 }

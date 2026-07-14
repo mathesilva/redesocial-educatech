@@ -46,8 +46,27 @@ export const buscarMissaoPorIdSchema = z
   })
   .strict();
 
+export const buscarRespostaMissaoParamsSchema = z
+  .object({
+    missaoId: z.string().uuid("Missao deve ser um UUID valido."),
+  })
+  .strict();
+
+export const criarRespostaMissaoSchema = z
+  .object({
+    resposta: z
+      .string({ error: "Resposta e obrigatoria." })
+      .trim()
+      .min(10, "Resposta deve ter no minimo 10 caracteres.")
+      .max(5000, "Resposta deve ter no maximo 5000 caracteres."),
+    imagemUrl: z.string().trim().url("Imagem deve ser uma URL valida.").optional(),
+  })
+  .strict();
+
 export const missionsSchemas = {
   buscarPorId: buscarMissaoPorIdSchema,
+  buscarRespostaParams: buscarRespostaMissaoParamsSchema,
   criar: criarMissaoSchema,
+  criarResposta: criarRespostaMissaoSchema,
   listar: listarMissoesSchema,
 };

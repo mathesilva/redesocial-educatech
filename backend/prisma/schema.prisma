@@ -36,6 +36,13 @@ enum DificuldadeMissao {
   @@map("dificuldade_missao")
 }
 
+enum StatusRespostaMissao {
+  ENVIADA
+  AVALIADA
+
+  @@map("status_resposta_missao")
+}
+
 model Usuario {
   id              String        @id @default(uuid()) @db.Uuid
   nomeCompleto    String        @map("nome_completo")
@@ -51,11 +58,12 @@ model Usuario {
   dataCriacao     DateTime      @default(now()) @map("data_criacao")
   dataAtualizacao DateTime      @updatedAt @map("data_atualizacao")
 
-  disciplina Disciplina? @relation(fields: [disciplinaId], references: [id])
-  publicacoes Publicacao[]
-  comentarios Comentario[]
-  reacoes     Reacao[]
-  missoes     Missao[]
+  disciplina      Disciplina?      @relation(fields: [disciplinaId], references: [id])
+  publicacoes     Publicacao[]
+  comentarios     Comentario[]
+  reacoes         Reacao[]
+  missoes         Missao[]
+  respostasMissao RespostaMissao[]
 
   @@index([escola])
   @@index([turma])
@@ -71,27 +79,27 @@ model Disciplina {
   dataAtualizacao DateTime @updatedAt @map("data_atualizacao")
 
   professores Usuario[]
-  publicacoes  Publicacao[]
-  missoes      Missao[]
+  publicacoes Publicacao[]
+  missoes     Missao[]
 
   @@map("disciplinas")
 }
 
 model Publicacao {
-  id              String           @id @default(uuid()) @db.Uuid
-  titulo          String
-  descricao       String
-  imagemUrl       String?          @map("imagem_url")
-  status          StatusPublicacao @default(PENDENTE)
-  quantidadeComentarios Int        @default(0) @map("quantidade_comentarios")
-  quantidadeCurtidas    Int        @default(0) @map("quantidade_curtidas")
-  usuarioId       String           @map("usuario_id") @db.Uuid
-  disciplinaId    String           @map("disciplina_id") @db.Uuid
-  dataCriacao     DateTime         @default(now()) @map("data_criacao")
-  dataAtualizacao DateTime         @updatedAt @map("data_atualizacao")
+  id                    String           @id @default(uuid()) @db.Uuid
+  titulo                String
+  descricao             String
+  imagemUrl             String?          @map("imagem_url")
+  status                StatusPublicacao @default(PENDENTE)
+  quantidadeComentarios Int              @default(0) @map("quantidade_comentarios")
+  quantidadeCurtidas    Int              @default(0) @map("quantidade_curtidas")
+  usuarioId             String           @map("usuario_id") @db.Uuid
+  disciplinaId          String           @map("disciplina_id") @db.Uuid
+  dataCriacao           DateTime         @default(now()) @map("data_criacao")
+  dataAtualizacao       DateTime         @updatedAt @map("data_atualizacao")
 
-  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
-  disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
+  usuario     Usuario      @relation(fields: [usuarioId], references: [id])
+  disciplina  Disciplina   @relation(fields: [disciplinaId], references: [id])
   comentarios Comentario[]
   reacoes     Reacao[]
 
@@ -136,23 +144,46 @@ model Reacao {
 }
 
 model Missao {
-  id                  String             @id @default(uuid()) @db.Uuid
-  titulo              String
-  descricao           String
-  criteriosAvaliacao  String?            @map("criterios_avaliacao")
-  prazo               DateTime
-  pontuacao           Int
-  dificuldade         DificuldadeMissao
-  professorId         String             @map("professor_id") @db.Uuid
-  disciplinaId        String             @map("disciplina_id") @db.Uuid
-  dataCriacao         DateTime           @default(now()) @map("data_criacao")
-  dataAtualizacao     DateTime           @updatedAt @map("data_atualizacao")
+  id                 String            @id @default(uuid()) @db.Uuid
+  titulo             String
+  descricao          String
+  criteriosAvaliacao String?           @map("criterios_avaliacao")
+  prazo              DateTime
+  pontuacao          Int
+  dificuldade        DificuldadeMissao
+  professorId        String            @map("professor_id") @db.Uuid
+  disciplinaId       String            @map("disciplina_id") @db.Uuid
+  dataCriacao        DateTime          @default(now()) @map("data_criacao")
+  dataAtualizacao    DateTime          @updatedAt @map("data_atualizacao")
 
-  professor  Usuario    @relation(fields: [professorId], references: [id])
-  disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
+  professor       Usuario          @relation(fields: [professorId], references: [id])
+  disciplina      Disciplina       @relation(fields: [disciplinaId], references: [id])
+  respostasMissao RespostaMissao[]
 
   @@index([professorId])
   @@index([disciplinaId])
   @@index([prazo])
   @@map("missoes")
+}
+
+model RespostaMissao {
+  id                String               @id @default(uuid()) @db.Uuid
+  resposta          String
+  imagemUrl         String?              @map("imagem_url")
+  status            StatusRespostaMissao @default(ENVIADA)
+  nota              Float?
+  feedbackProfessor String?              @map("feedback_professor")
+  dataEnvio         DateTime             @default(now()) @map("data_envio")
+  dataAtualizacao   DateTime             @updatedAt @map("data_atualizacao")
+  alunoId           String               @map("aluno_id") @db.Uuid
+  missaoId          String               @map("missao_id") @db.Uuid
+
+  aluno  Usuario @relation(fields: [alunoId], references: [id])
+  missao Missao  @relation(fields: [missaoId], references: [id])
+
+  @@unique([alunoId, missaoId])
+  @@index([alunoId])
+  @@index([missaoId])
+  @@index([status])
+  @@map("respostas_missao")
 }

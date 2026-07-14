@@ -1,7 +1,11 @@
-import type { Disciplina, Prisma, Usuario } from "@prisma/client";
+import type { Disciplina, Prisma, RespostaMissao, Usuario } from "@prisma/client";
 
 import { prisma } from "../../shared/prisma/index.js";
-import type { CriarMissaoRepositoryDto, ListarMissoesDto } from "./dto.js";
+import type {
+  CriarMissaoRepositoryDto,
+  CriarRespostaMissaoRepositoryDto,
+  ListarMissoesDto,
+} from "./dto.js";
 
 const missaoInclude = {
   professor: {
@@ -37,6 +41,32 @@ export class MissionsRepository {
     return this.prisma.missao.findUnique({
       where: { id },
       include: missaoInclude,
+    });
+  }
+
+  public async buscarRespostaPorAlunoEMissao(
+    alunoId: string,
+    missaoId: string,
+  ): Promise<RespostaMissao | null> {
+    return this.prisma.respostaMissao.findUnique({
+      where: {
+        alunoId_missaoId: {
+          alunoId,
+          missaoId,
+        },
+      },
+    });
+  }
+
+  public async criarResposta(dados: CriarRespostaMissaoRepositoryDto): Promise<RespostaMissao> {
+    return this.prisma.respostaMissao.create({
+      data: {
+        resposta: dados.resposta,
+        imagemUrl: dados.imagemUrl ?? null,
+        alunoId: dados.alunoId,
+        missaoId: dados.missaoId,
+        status: "ENVIADA",
+      },
     });
   }
 

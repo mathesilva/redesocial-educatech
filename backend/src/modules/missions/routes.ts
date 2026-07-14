@@ -14,5 +14,15 @@ export function missionsRoutes(app: FastifyInstance): void {
     controller.criar,
   );
   app.get("/api/missoes", { preHandler: autenticarUsuario }, controller.listar);
+  app.post(
+    "/api/missoes/:missaoId/respostas",
+    { preHandler: [autenticarUsuario, permitirPerfis([PerfilUsuario.ALUNO])] },
+    controller.responder,
+  );
+  app.get(
+    "/api/missoes/:missaoId/respostas/minha",
+    { preHandler: [autenticarUsuario, permitirPerfis([PerfilUsuario.ALUNO])] },
+    controller.buscarMinhaResposta,
+  );
   app.get("/api/missoes/:id", { preHandler: autenticarUsuario }, controller.buscarPorId);
 }
