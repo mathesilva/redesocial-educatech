@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
 
+import { RankingController } from "./controller.js";
+
 export function rankingRoutes(app: FastifyInstance): void {
-  void app;
+  const controller = new RankingController();
+
+  app.get("/api/ranking", controller.listar);
 }

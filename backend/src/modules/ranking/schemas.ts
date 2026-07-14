@@ -1,3 +1,11 @@
 import { z } from "zod";
 
-export const rankingSchemas = z.object({}).strict();
+export const listarRankingSchema = z
+  .object({
+    disciplinaId: z.string().uuid("Disciplina deve ser um UUID valido.").optional(),
+  })
+  .strict();
+
+export const rankingSchemas = {
+  listar: listarRankingSchema,
+};
