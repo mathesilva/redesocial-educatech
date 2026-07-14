@@ -5,6 +5,7 @@ export * from "./disciplinas/index.js";
 export * from "./missions/index.js";
 export * from "./notifications/index.js";
 export * from "./posts/index.js";
+export * from "./profile/index.js";
 export * from "./ranking/index.js";
 export * from "./reactions/index.js";
 export * from "./users/index.js";
