@@ -20,9 +20,19 @@ export function missionsRoutes(app: FastifyInstance): void {
     controller.responder,
   );
   app.get(
+    "/api/missoes/:missaoId/respostas",
+    { preHandler: [autenticarUsuario, permitirPerfis([PerfilUsuario.PROFESSOR])] },
+    controller.listarRespostas,
+  );
+  app.get(
     "/api/missoes/:missaoId/respostas/minha",
     { preHandler: [autenticarUsuario, permitirPerfis([PerfilUsuario.ALUNO])] },
     controller.buscarMinhaResposta,
+  );
+  app.patch(
+    "/api/missoes/:missaoId/respostas/:respostaId/avaliacao",
+    { preHandler: [autenticarUsuario, permitirPerfis([PerfilUsuario.PROFESSOR])] },
+    controller.avaliarResposta,
   );
   app.get("/api/missoes/:id", { preHandler: autenticarUsuario }, controller.buscarPorId);
 }

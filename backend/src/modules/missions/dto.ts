@@ -2,6 +2,8 @@ import type { DificuldadeMissao, PerfilUsuario, StatusRespostaMissao } from "@pr
 import { z } from "zod";
 
 import {
+  avaliarRespostaMissaoParamsSchema,
+  avaliarRespostaMissaoSchema,
   buscarMissaoPorIdSchema,
   buscarRespostaMissaoParamsSchema,
   criarMissaoSchema,
@@ -14,6 +16,8 @@ export type ListarMissoesDto = z.infer<typeof listarMissoesSchema>;
 export type BuscarMissaoPorIdDto = z.infer<typeof buscarMissaoPorIdSchema>;
 export type BuscarRespostaMissaoParamsDto = z.infer<typeof buscarRespostaMissaoParamsSchema>;
 export type CriarRespostaMissaoDto = z.infer<typeof criarRespostaMissaoSchema>;
+export type AvaliarRespostaMissaoParamsDto = z.infer<typeof avaliarRespostaMissaoParamsSchema>;
+export type AvaliarRespostaMissaoDto = z.infer<typeof avaliarRespostaMissaoSchema>;
 
 export interface UsuarioMissaoDto {
   id: string;
@@ -38,6 +42,11 @@ export interface CriarRespostaMissaoRepositoryDto {
   imagemUrl?: string | null;
   alunoId: string;
   missaoId: string;
+}
+
+export interface AvaliarRespostaMissaoRepositoryDto {
+  nota: number;
+  feedbackProfessor?: string | null;
 }
 
 export interface ProfessorMissaoRespostaDto {
@@ -78,6 +87,23 @@ export interface ListarMissoesRespostaDto {
 
 export interface RespostaMissaoRespostaDto {
   resposta: string;
+  status: StatusRespostaMissao;
+  nota: number | null;
+  feedbackProfessor: string | null;
+  dataEnvio: Date;
+}
+
+export interface AlunoRespostaMissaoDto {
+  id: string;
+  nomeCompleto: string;
+  email: string;
+}
+
+export interface RespostaMissaoProfessorRespostaDto {
+  id: string;
+  resposta: string;
+  imagemUrl: string | null;
+  aluno: AlunoRespostaMissaoDto;
   status: StatusRespostaMissao;
   nota: number | null;
   feedbackProfessor: string | null;

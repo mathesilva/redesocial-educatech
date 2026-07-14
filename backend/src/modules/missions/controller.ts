@@ -3,6 +3,8 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { respostaSucesso } from "../../shared/http/index.js";
 import type { UsuarioMissaoDto } from "./dto.js";
 import {
+  avaliarRespostaMissaoParamsSchema,
+  avaliarRespostaMissaoSchema,
   buscarMissaoPorIdSchema,
   buscarRespostaMissaoParamsSchema,
   criarMissaoSchema,
@@ -54,5 +56,28 @@ export class MissionsController {
     const resposta = await this.service.buscarMinhaResposta(missaoId, usuario);
 
     return reply.status(200).send(respostaSucesso("Resposta encontrada.", resposta));
+  };
+
+  public avaliarResposta = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> => {
+    const { missaoId, respostaId } = avaliarRespostaMissaoParamsSchema.parse(request.params);
+    const dados = avaliarRespostaMissaoSchema.parse(request.body);
+    const usuario = request.usuarioAutenticado as UsuarioMissaoDto;
+    const resposta = await this.service.avaliarResposta(missaoId, respostaId, dados, usuario);
+
+    return reply.status(200).send(respostaSucesso("Resposta avaliada.", resposta));
+  };
+
+  public listarRespostas = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> => {
+    const { missaoId } = buscarRespostaMissaoParamsSchema.parse(request.params);
+    const usuario = request.usuarioAutenticado as UsuarioMissaoDto;
+    const respostas = await this.service.listarRespostas(missaoId, usuario);
+
+    return reply.status(200).send(respostaSucesso("Respostas encontradas.", respostas));
   };
 }

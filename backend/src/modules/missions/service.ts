@@ -7,16 +7,18 @@ import {
   NotFoundError,
 } from "../../shared/errors/index.js";
 import type {
+  AvaliarRespostaMissaoDto,
   CriarMissaoDto,
   CriarRespostaMissaoDto,
   ListarMissoesDto,
   ListarMissoesRespostaDto,
   MissaoRespostaDto,
+  RespostaMissaoProfessorRespostaDto,
   RespostaMissaoRespostaDto,
   UsuarioMissaoDto,
 } from "./dto.js";
 import { MissionsRepository } from "./repository.js";
-import type { MissaoComRelacoes } from "./repository.js";
+import type { MissaoComRelacoes, RespostaMissaoComAluno } from "./repository.js";
 
 export class MissionsService {
   public readonly repository = new MissionsRepository();
@@ -153,6 +155,43 @@ export class MissionsService {
     return this.mapearRespostaMissao(resposta);
   }
 
+  public async avaliarResposta(
+    missaoId: string,
+    respostaId: string,
+    dados: AvaliarRespostaMissaoDto,
+    usuario: UsuarioMissaoDto,
+  ): Promise<RespostaMissaoRespostaDto> {
+    await this.validarProfessorResponsavel(missaoId, usuario);
+
+    const resposta = await this.repository.buscarRespostaPorId(respostaId);
+
+    if (!resposta || resposta.missaoId !== missaoId) {
+      throw new NotFoundError("Resposta da missao nao encontrada.");
+    }
+
+    if (resposta.status === "AVALIADA") {
+      throw new ConflictError("Resposta ja avaliada.");
+    }
+
+    const respostaAvaliada = await this.repository.avaliarResposta(respostaId, {
+      nota: dados.nota,
+      feedbackProfessor: dados.feedbackProfessor ?? null,
+    });
+
+    return this.mapearRespostaMissao(respostaAvaliada);
+  }
+
+  public async listarRespostas(
+    missaoId: string,
+    usuario: UsuarioMissaoDto,
+  ): Promise<RespostaMissaoProfessorRespostaDto[]> {
+    await this.validarProfessorResponsavel(missaoId, usuario);
+
+    const respostas = await this.repository.listarRespostasPorMissao(missaoId);
+
+    return respostas.map((resposta) => this.mapearRespostaMissaoProfessor(resposta));
+  }
+
   private mapearMissao(missao: MissaoComRelacoes): MissaoRespostaDto {
     return {
       id: missao.id,
@@ -189,6 +228,46 @@ export class MissionsService {
       feedbackProfessor: resposta.feedbackProfessor,
       dataEnvio: resposta.dataEnvio,
     };
+  }
+
+  private mapearRespostaMissaoProfessor(
+    resposta: RespostaMissaoComAluno,
+  ): RespostaMissaoProfessorRespostaDto {
+    return {
+      id: resposta.id,
+      resposta: resposta.resposta,
+      imagemUrl: resposta.imagemUrl,
+      aluno: {
+        id: resposta.aluno.id,
+        nomeCompleto: resposta.aluno.nomeCompleto,
+        email: resposta.aluno.email,
+      },
+      status: resposta.status,
+      nota: resposta.nota,
+      feedbackProfessor: resposta.feedbackProfessor,
+      dataEnvio: resposta.dataEnvio,
+    };
+  }
+
+  private async validarProfessorResponsavel(
+    missaoId: string,
+    usuario: UsuarioMissaoDto,
+  ): Promise<MissaoComRelacoes> {
+    if (usuario.perfil !== "PROFESSOR") {
+      throw new ForbiddenError("Somente professores podem acessar respostas da missao.");
+    }
+
+    const missao = await this.repository.buscarPorId(missaoId);
+
+    if (!missao) {
+      throw new NotFoundError("Missao nao encontrada.");
+    }
+
+    if (missao.professorId !== usuario.id) {
+      throw new ForbiddenError("Professor nao autorizado para esta missao.");
+    }
+
+    return missao;
   }
 
   private eErroRestricaoUnica(error: unknown): boolean {

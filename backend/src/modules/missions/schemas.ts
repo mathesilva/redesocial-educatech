@@ -52,6 +52,13 @@ export const buscarRespostaMissaoParamsSchema = z
   })
   .strict();
 
+export const avaliarRespostaMissaoParamsSchema = z
+  .object({
+    missaoId: z.string().uuid("Missao deve ser um UUID valido."),
+    respostaId: z.string().uuid("Resposta deve ser um UUID valido."),
+  })
+  .strict();
+
 export const criarRespostaMissaoSchema = z
   .object({
     resposta: z
@@ -63,7 +70,23 @@ export const criarRespostaMissaoSchema = z
   })
   .strict();
 
+export const avaliarRespostaMissaoSchema = z
+  .object({
+    nota: z.coerce
+      .number({ error: "Nota e obrigatoria." })
+      .min(0, "Nota deve ser maior ou igual a 0.")
+      .max(100, "Nota deve ser menor ou igual a 100."),
+    feedbackProfessor: z
+      .string()
+      .trim()
+      .max(1000, "Feedback do professor deve ter no maximo 1000 caracteres.")
+      .optional(),
+  })
+  .strict();
+
 export const missionsSchemas = {
+  avaliarResposta: avaliarRespostaMissaoSchema,
+  avaliarRespostaParams: avaliarRespostaMissaoParamsSchema,
   buscarPorId: buscarMissaoPorIdSchema,
   buscarRespostaParams: buscarRespostaMissaoParamsSchema,
   criar: criarMissaoSchema,

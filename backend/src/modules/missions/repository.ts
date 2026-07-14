@@ -2,6 +2,7 @@ import type { Disciplina, Prisma, RespostaMissao, Usuario } from "@prisma/client
 
 import { prisma } from "../../shared/prisma/index.js";
 import type {
+  AvaliarRespostaMissaoRepositoryDto,
   CriarMissaoRepositoryDto,
   CriarRespostaMissaoRepositoryDto,
   ListarMissoesDto,
@@ -25,6 +26,20 @@ const missaoInclude = {
 
 export type MissaoComRelacoes = Prisma.MissaoGetPayload<{
   include: typeof missaoInclude;
+}>;
+
+const respostaMissaoAlunoInclude = {
+  aluno: {
+    select: {
+      id: true,
+      nomeCompleto: true,
+      email: true,
+    },
+  },
+} satisfies Prisma.RespostaMissaoInclude;
+
+export type RespostaMissaoComAluno = Prisma.RespostaMissaoGetPayload<{
+  include: typeof respostaMissaoAlunoInclude;
 }>;
 
 export class MissionsRepository {
@@ -58,6 +73,12 @@ export class MissionsRepository {
     });
   }
 
+  public async buscarRespostaPorId(id: string): Promise<RespostaMissao | null> {
+    return this.prisma.respostaMissao.findUnique({
+      where: { id },
+    });
+  }
+
   public async criarResposta(dados: CriarRespostaMissaoRepositoryDto): Promise<RespostaMissao> {
     return this.prisma.respostaMissao.create({
       data: {
@@ -66,6 +87,30 @@ export class MissionsRepository {
         alunoId: dados.alunoId,
         missaoId: dados.missaoId,
         status: "ENVIADA",
+      },
+    });
+  }
+
+  public async avaliarResposta(
+    id: string,
+    dados: AvaliarRespostaMissaoRepositoryDto,
+  ): Promise<RespostaMissao> {
+    return this.prisma.respostaMissao.update({
+      where: { id },
+      data: {
+        nota: dados.nota,
+        feedbackProfessor: dados.feedbackProfessor ?? null,
+        status: "AVALIADA",
+      },
+    });
+  }
+
+  public async listarRespostasPorMissao(missaoId: string): Promise<RespostaMissaoComAluno[]> {
+    return this.prisma.respostaMissao.findMany({
+      where: { missaoId },
+      include: respostaMissaoAlunoInclude,
+      orderBy: {
+        dataEnvio: "asc",
       },
     });
   }
