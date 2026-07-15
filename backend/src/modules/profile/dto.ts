@@ -1,4 +1,9 @@
-import type { StatusPublicacao } from "@prisma/client";
+import type { PerfilUsuario, StatusPublicacao } from "@prisma/client";
+import type { z } from "zod";
+
+import type { buscarPerfilPublicoParamsSchema } from "./schemas.js";
+
+export type BuscarPerfilPublicoParamsDto = z.infer<typeof buscarPerfilPublicoParamsSchema>;
 
 export interface UsuarioPerfilDto {
   id: string;
@@ -7,6 +12,21 @@ export interface UsuarioPerfilDto {
   fotoPerfil: string | null;
   escola: string;
   turma: string | null;
+}
+
+export interface DisciplinaPerfilPublicoDto {
+  id: string;
+  nome: string;
+}
+
+export interface UsuarioPerfilPublicoDto {
+  id: string;
+  nomeCompleto: string;
+  fotoPerfil: string | null;
+  perfil: PerfilUsuario;
+  turma: string | null;
+  disciplina: DisciplinaPerfilPublicoDto | null;
+  dataCriacao: Date;
 }
 
 export interface GamificacaoPerfilDto {
@@ -37,6 +57,13 @@ export interface PublicacaoPerfilDto {
 
 export interface PerfilRespostaDto {
   usuario: UsuarioPerfilDto;
+  gamificacao: GamificacaoPerfilDto;
+  estatisticas: EstatisticasPerfilDto;
+  publicacoes: PublicacaoPerfilDto[];
+}
+
+export interface PerfilPublicoRespostaDto {
+  usuario: UsuarioPerfilPublicoDto;
   gamificacao: GamificacaoPerfilDto;
   estatisticas: EstatisticasPerfilDto;
   publicacoes: PublicacaoPerfilDto[];

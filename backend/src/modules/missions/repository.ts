@@ -1,10 +1,19 @@
-import type { Disciplina, Prisma, RespostaMissao, Usuario } from "@prisma/client";
+import type {
+  Disciplina,
+  Prisma,
+  RespostaMissao,
+  StatusRespostaMissao,
+  Usuario,
+} from "@prisma/client";
 
 import { prisma } from "../../shared/prisma/index.js";
 import type {
+  AtualizarMissaoRepositoryDto,
   AvaliarRespostaMissaoRepositoryDto,
   CriarMissaoRepositoryDto,
   CriarRespostaMissaoRepositoryDto,
+  EnviarRespostaMissaoRepositoryDto,
+  IniciarRespostaMissaoRepositoryDto,
   ListarMissoesDto,
 } from "./dto.js";
 
@@ -34,6 +43,7 @@ const respostaMissaoAlunoInclude = {
       id: true,
       nomeCompleto: true,
       email: true,
+      turma: true,
     },
   },
 } satisfies Prisma.RespostaMissaoInclude;
@@ -45,10 +55,33 @@ export type RespostaMissaoComAluno = Prisma.RespostaMissaoGetPayload<{
 export class MissionsRepository {
   protected readonly prisma = prisma;
 
-  public async criar(dados: CriarMissaoRepositoryDto): Promise<MissaoComRelacoes> {
-    return this.prisma.missao.create({
-      data: dados,
-      include: missaoInclude,
+  public async criarComNotificacoes(
+    dados: CriarMissaoRepositoryDto,
+  ): Promise<MissaoComRelacoes> {
+    return this.prisma.$transaction(async (tx) => {
+      const missao = await tx.missao.create({
+        data: dados,
+        include: missaoInclude,
+      });
+
+      const alunos = await tx.usuario.findMany({
+        where: { perfil: "ALUNO" },
+        select: { id: true },
+      });
+
+      if (alunos.length > 0) {
+        await tx.notificacao.createMany({
+          data: alunos.map((aluno) => ({
+            usuarioId: aluno.id,
+            missaoId: missao.id,
+            titulo: "Novo desafio disponível",
+            mensagem: `O professor publicou um novo desafio: ${missao.titulo}. Acesse a área de Missões Acadêmicas para participar.`,
+            tipo: "MISSAO" as const,
+          })),
+        });
+      }
+
+      return missao;
     });
   }
 
@@ -79,6 +112,16 @@ export class MissionsRepository {
     });
   }
 
+  public async iniciarResposta(dados: IniciarRespostaMissaoRepositoryDto): Promise<RespostaMissao> {
+    return this.prisma.respostaMissao.create({
+      data: {
+        alunoId: dados.alunoId,
+        missaoId: dados.missaoId,
+        status: "INICIADA",
+      },
+    });
+  }
+
   public async criarResposta(dados: CriarRespostaMissaoRepositoryDto): Promise<RespostaMissao> {
     return this.prisma.respostaMissao.create({
       data: {
@@ -87,6 +130,22 @@ export class MissionsRepository {
         alunoId: dados.alunoId,
         missaoId: dados.missaoId,
         status: "ENVIADA",
+        dataEnvio: new Date(),
+      },
+    });
+  }
+
+  public async enviarResposta(
+    id: string,
+    dados: EnviarRespostaMissaoRepositoryDto,
+  ): Promise<RespostaMissao> {
+    return this.prisma.respostaMissao.update({
+      where: { id },
+      data: {
+        resposta: dados.resposta,
+        imagemUrl: dados.imagemUrl ?? null,
+        status: "ENVIADA",
+        dataEnvio: new Date(),
       },
     });
   }
@@ -107,7 +166,10 @@ export class MissionsRepository {
 
   public async listarRespostasPorMissao(missaoId: string): Promise<RespostaMissaoComAluno[]> {
     return this.prisma.respostaMissao.findMany({
-      where: { missaoId },
+      where: {
+        missaoId,
+        status: { in: ["ENVIADA", "AVALIADA"] },
+      },
       include: respostaMissaoAlunoInclude,
       orderBy: {
         dataEnvio: "asc",
@@ -143,6 +205,62 @@ export class MissionsRepository {
     return this.prisma.usuario.findUnique({
       where: { id },
     });
+  }
+
+  public async listarPorProfessor(
+    professorId: string,
+    filtros: { pagina: number; limite: number },
+  ): Promise<MissaoComRelacoes[]> {
+    return this.prisma.missao.findMany({
+      where: { professorId },
+      include: missaoInclude,
+      orderBy: { dataCriacao: "desc" },
+      skip: (filtros.pagina - 1) * filtros.limite,
+      take: filtros.limite,
+    });
+  }
+
+  public async contarPorProfessor(professorId: string): Promise<number> {
+    return this.prisma.missao.count({ where: { professorId } });
+  }
+
+  public async contarRespostasPorMissoes(
+    missaoIds: string[],
+  ): Promise<{ missaoId: string; status: StatusRespostaMissao; quantidade: number }[]> {
+    if (missaoIds.length === 0) {
+      return [];
+    }
+
+    const grupos = await this.prisma.respostaMissao.groupBy({
+      by: ["missaoId", "status"],
+      where: { missaoId: { in: missaoIds } },
+      _count: { _all: true },
+    });
+
+    return grupos.map((grupo) => ({
+      missaoId: grupo.missaoId,
+      status: grupo.status,
+      quantidade: grupo._count._all,
+    }));
+  }
+
+  public async contarRespostasDaMissao(missaoId: string): Promise<number> {
+    return this.prisma.respostaMissao.count({ where: { missaoId } });
+  }
+
+  public async atualizar(
+    id: string,
+    dados: AtualizarMissaoRepositoryDto,
+  ): Promise<MissaoComRelacoes> {
+    return this.prisma.missao.update({
+      where: { id },
+      data: dados,
+      include: missaoInclude,
+    });
+  }
+
+  public async excluir(id: string): Promise<void> {
+    await this.prisma.missao.delete({ where: { id } });
   }
 
   private criarWhereListagem(filtros: ListarMissoesDto): Prisma.MissaoWhereInput {

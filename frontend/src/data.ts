@@ -9,7 +9,6 @@ import {
   Post,
   Mission,
   NotificationItem,
-  RankingEntry,
   MissionSubmission,
 } from "./types";
 
@@ -349,60 +348,6 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   },
 ];
 
-export const INITIAL_RANKING: RankingEntry[] = [
-  {
-    id: "rank-1",
-    name: "Beatriz Silveira",
-    avatar:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
-    role: "student",
-    xp: 3450,
-    level: 8,
-    rank: 1,
-  },
-  {
-    id: "rank-2",
-    name: "João Lima",
-    avatar:
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
-    role: "student",
-    xp: 2900,
-    level: 7,
-    rank: 2,
-  },
-  {
-    id: "user-me",
-    name: "Thiago Alencar",
-    avatar:
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-    role: "student",
-    xp: 1420,
-    level: 5,
-    rank: 3,
-    isMe: true,
-  },
-  {
-    id: "rank-4",
-    name: "Mariana Costa",
-    avatar:
-      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80",
-    role: "student",
-    xp: 1280,
-    level: 5,
-    rank: 4,
-  },
-  {
-    id: "rank-5",
-    name: "Pedro Henrique",
-    avatar:
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
-    role: "student",
-    xp: 980,
-    level: 4,
-    rank: 5,
-  },
-];
-
 export const INITIAL_SUBMISSIONS: MissionSubmission[] = [
   {
     id: "sub-1",
@@ -410,6 +355,9 @@ export const INITIAL_SUBMISSIONS: MissionSubmission[] = [
     studentAvatar:
       "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
     missionTitle: "Desbravador de Funções",
+    subject: "Matemática",
+    turma: "2º Ano A",
+    answer: "As raízes da função são x = 1 e x = 3, calculadas pela fórmula de Bhaskara.",
     score: "3/3 (100%)",
     submittedAt: "2026-07-10T08:15:00-07:00",
     xpAwarded: 150,
@@ -421,6 +369,9 @@ export const INITIAL_SUBMISSIONS: MissionSubmission[] = [
     studentAvatar:
       "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
     missionTitle: "Desbravador de Funções",
+    subject: "Matemática",
+    turma: "2º Ano B",
+    answer: "Encontrei apenas uma raiz real, x = 2, usando substituição direta.",
     score: "2/3 (66%)",
     submittedAt: "2026-07-10T07:30:00-07:00",
     xpAwarded: 100,
@@ -432,6 +383,9 @@ export const INITIAL_SUBMISSIONS: MissionSubmission[] = [
     studentAvatar:
       "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80",
     missionTitle: "Fisiologia Humana: Impulso Nervoso",
+    subject: "Biologia",
+    turma: "2º Ano A",
+    answer: "O impulso nervoso percorre o axônio por meio da despolarização da membrana.",
     score: "2/2 (100%)",
     submittedAt: "2026-07-10T08:30:00-07:00",
     xpAwarded: 200,

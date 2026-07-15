@@ -7,9 +7,12 @@ import {
   NotFoundError,
 } from "../../shared/errors/index.js";
 import type {
+  AtualizarMissaoDto,
   AvaliarRespostaMissaoDto,
   CriarMissaoDto,
   CriarRespostaMissaoDto,
+  ListarMinhasMissoesDto,
+  ListarMinhasMissoesRespostaDto,
   ListarMissoesDto,
   ListarMissoesRespostaDto,
   MissaoRespostaDto,
@@ -45,7 +48,7 @@ export class MissionsService {
       throw new ForbiddenError("Professor autenticado invalido.");
     }
 
-    const missao = await this.repository.criar({
+    const missao = await this.repository.criarComNotificacoes({
       titulo: dados.titulo,
       descricao: dados.descricao,
       criteriosAvaliacao: dados.criteriosAvaliacao ?? null,
@@ -86,6 +89,163 @@ export class MissionsService {
     return this.mapearMissao(missao);
   }
 
+  public async listarMinhas(
+    usuario: UsuarioMissaoDto,
+    filtros: ListarMinhasMissoesDto,
+  ): Promise<ListarMinhasMissoesRespostaDto> {
+    if (usuario.perfil !== "PROFESSOR") {
+      throw new ForbiddenError("Somente professores podem listar seus proprios desafios.");
+    }
+
+    const [missoes, total] = await Promise.all([
+      this.repository.listarPorProfessor(usuario.id, filtros),
+      this.repository.contarPorProfessor(usuario.id),
+    ]);
+
+    const contagens = await this.repository.contarRespostasPorMissoes(
+      missoes.map((missao) => missao.id),
+    );
+
+    const contagemPorMissao = new Map<
+      string,
+      { iniciados: number; recebidas: number; concluidas: number }
+    >();
+
+    for (const missao of missoes) {
+      contagemPorMissao.set(missao.id, { iniciados: 0, recebidas: 0, concluidas: 0 });
+    }
+
+    for (const grupo of contagens) {
+      const atual = contagemPorMissao.get(grupo.missaoId);
+
+      if (!atual) {
+        continue;
+      }
+
+      atual.iniciados += grupo.quantidade;
+
+      if (grupo.status === "ENVIADA" || grupo.status === "AVALIADA") {
+        atual.recebidas += grupo.quantidade;
+      }
+
+      if (grupo.status === "AVALIADA") {
+        atual.concluidas += grupo.quantidade;
+      }
+    }
+
+    const agora = new Date();
+
+    return {
+      itens: missoes.map((missao) => {
+        const contagem = contagemPorMissao.get(missao.id) ?? {
+          iniciados: 0,
+          recebidas: 0,
+          concluidas: 0,
+        };
+
+        return {
+          ...this.mapearMissao(missao),
+          ativa: missao.prazo > agora,
+          quantidadeIniciados: contagem.iniciados,
+          quantidadeRespostasRecebidas: contagem.recebidas,
+          quantidadeConcluidas: contagem.concluidas,
+        };
+      }),
+      paginacao: {
+        pagina: filtros.pagina,
+        limite: filtros.limite,
+        total,
+        totalPaginas: Math.ceil(total / filtros.limite),
+      },
+    };
+  }
+
+  public async atualizar(
+    id: string,
+    dados: AtualizarMissaoDto,
+    usuario: UsuarioMissaoDto,
+  ): Promise<MissaoRespostaDto> {
+    await this.validarProfessorResponsavel(id, usuario);
+
+    const missaoAtualizada = await this.repository.atualizar(id, {
+      ...(dados.titulo !== undefined && { titulo: dados.titulo }),
+      ...(dados.descricao !== undefined && { descricao: dados.descricao }),
+      ...(dados.criteriosAvaliacao !== undefined && {
+        criteriosAvaliacao: dados.criteriosAvaliacao,
+      }),
+      ...(dados.prazo !== undefined && { prazo: dados.prazo }),
+      ...(dados.pontuacao !== undefined && { pontuacao: dados.pontuacao }),
+      ...(dados.dificuldade !== undefined && { dificuldade: dados.dificuldade }),
+      ...(dados.disciplinaId !== undefined && { disciplinaId: dados.disciplinaId }),
+    });
+
+    return this.mapearMissao(missaoAtualizada);
+  }
+
+  public async excluir(id: string, usuario: UsuarioMissaoDto): Promise<void> {
+    await this.validarProfessorResponsavel(id, usuario);
+
+    const quantidadeRespostas = await this.repository.contarRespostasDaMissao(id);
+
+    if (quantidadeRespostas > 0) {
+      throw new ConflictError(
+        "Nao e possivel excluir um desafio que ja possui respostas de alunos.",
+      );
+    }
+
+    await this.repository.excluir(id);
+  }
+
+  public async iniciar(
+    missaoId: string,
+    usuario: UsuarioMissaoDto,
+  ): Promise<RespostaMissaoRespostaDto> {
+    if (usuario.perfil !== "ALUNO") {
+      throw new ForbiddenError("Somente alunos podem iniciar missoes.");
+    }
+
+    const missao = await this.repository.buscarPorId(missaoId);
+
+    if (!missao) {
+      throw new NotFoundError("Missao nao encontrada.");
+    }
+
+    if (missao.prazo <= new Date()) {
+      throw new BadRequestError("Nao e permitido iniciar missao vencida.");
+    }
+
+    const respostaExistente = await this.repository.buscarRespostaPorAlunoEMissao(
+      usuario.id,
+      missaoId,
+    );
+
+    if (respostaExistente) {
+      return this.mapearRespostaMissao(respostaExistente);
+    }
+
+    try {
+      const resposta = await this.repository.iniciarResposta({
+        alunoId: usuario.id,
+        missaoId,
+      });
+
+      return this.mapearRespostaMissao(resposta);
+    } catch (error) {
+      if (this.eErroRestricaoUnica(error)) {
+        const respostaConcorrente = await this.repository.buscarRespostaPorAlunoEMissao(
+          usuario.id,
+          missaoId,
+        );
+
+        if (respostaConcorrente) {
+          return this.mapearRespostaMissao(respostaConcorrente);
+        }
+      }
+
+      throw error;
+    }
+  }
+
   public async responder(
     missaoId: string,
     dados: CriarRespostaMissaoDto,
@@ -110,17 +270,22 @@ export class MissionsService {
       missaoId,
     );
 
-    if (respostaExistente) {
+    if (respostaExistente && respostaExistente.status !== "INICIADA") {
       throw new ConflictError("Aluno ja enviou resposta para esta missao.");
     }
 
     try {
-      const resposta = await this.repository.criarResposta({
-        resposta: dados.resposta,
-        imagemUrl: dados.imagemUrl ?? null,
-        alunoId: usuario.id,
-        missaoId,
-      });
+      const resposta = respostaExistente
+        ? await this.repository.enviarResposta(respostaExistente.id, {
+            resposta: dados.resposta,
+            imagemUrl: dados.imagemUrl ?? null,
+          })
+        : await this.repository.criarResposta({
+            resposta: dados.resposta,
+            imagemUrl: dados.imagemUrl ?? null,
+            alunoId: usuario.id,
+            missaoId,
+          });
 
       return this.mapearRespostaMissao(resposta);
     } catch (error) {
@@ -173,6 +338,10 @@ export class MissionsService {
       throw new ConflictError("Resposta ja avaliada.");
     }
 
+    if (resposta.status === "INICIADA") {
+      throw new ConflictError("Aluno ainda nao enviou a resposta desta missao.");
+    }
+
     const respostaAvaliada = await this.repository.avaliarResposta(respostaId, {
       nota: dados.nota,
       feedbackProfessor: dados.feedbackProfessor ?? null,
@@ -215,17 +384,19 @@ export class MissionsService {
   }
 
   private mapearRespostaMissao(resposta: {
-    resposta: string;
+    resposta: string | null;
     status: RespostaMissaoRespostaDto["status"];
     nota: number | null;
     feedbackProfessor: string | null;
-    dataEnvio: Date;
+    dataInicio: Date;
+    dataEnvio: Date | null;
   }): RespostaMissaoRespostaDto {
     return {
       resposta: resposta.resposta,
       status: resposta.status,
       nota: resposta.nota,
       feedbackProfessor: resposta.feedbackProfessor,
+      dataInicio: resposta.dataInicio,
       dataEnvio: resposta.dataEnvio,
     };
   }
@@ -241,10 +412,12 @@ export class MissionsService {
         id: resposta.aluno.id,
         nomeCompleto: resposta.aluno.nomeCompleto,
         email: resposta.aluno.email,
+        turma: resposta.aluno.turma,
       },
       status: resposta.status,
       nota: resposta.nota,
       feedbackProfessor: resposta.feedbackProfessor,
+      dataInicio: resposta.dataInicio,
       dataEnvio: resposta.dataEnvio,
     };
   }

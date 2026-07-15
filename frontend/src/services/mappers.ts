@@ -1,5 +1,26 @@
-import type { CommentDto, MissionDto, NotificationDto, PostDto, ProfileResponseDto } from "../types/api";
-import type { Mission, NotificationItem, Post, PostComment, UserProfile, UserRole } from "../types";
+import type {
+  CommentDto,
+  MissionDto,
+  MyMissionDto,
+  NotificationDto,
+  PostDto,
+  ProfileResponseDto,
+  PublicProfileResponseDto,
+  RankingResponseDto,
+  UserSearchResultDto,
+} from "../types/api";
+import type {
+  Mission,
+  MyMission,
+  NotificationItem,
+  Post,
+  PostComment,
+  PublicProfile,
+  PublicProfileSummary,
+  RankingEntry,
+  UserProfile,
+  UserRole,
+} from "../types";
 
 const DEFAULT_AVATAR =
   "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80";
@@ -110,6 +131,72 @@ export const mapMission = (mission: MissionDto): Mission => ({
       correctOptionIndex: 0,
     },
   ],
+});
+
+export const mapMyMission = (mission: MyMissionDto): MyMission => ({
+  id: mission.id,
+  title: mission.titulo,
+  subject: mission.disciplina.nome,
+  description: mission.descricao,
+  difficulty: mapDifficulty(mission.dificuldade),
+  xpReward: mission.pontuacao,
+  pointsReward: mission.pontuacao,
+  createdAt: mission.dataCriacao,
+  deadline: mission.prazo,
+  active: mission.ativa,
+  startedCount: mission.quantidadeIniciados,
+  receivedCount: mission.quantidadeRespostasRecebidas,
+  completedCount: mission.quantidadeConcluidas,
+});
+
+export const mapRanking = (
+  ranking: RankingResponseDto[],
+  currentUserId: string,
+): RankingEntry[] =>
+  ranking.map((item) => ({
+    id: item.aluno.id,
+    name: item.aluno.nomeCompleto,
+    avatar: DEFAULT_AVATAR,
+    role: "student",
+    xp: item.pontuacao,
+    level: item.nivel,
+    rank: item.posicao,
+    isMe: item.aluno.id === currentUserId,
+  }));
+
+export const mapUserSearchResult = (dto: UserSearchResultDto): PublicProfileSummary => ({
+  id: dto.id,
+  name: dto.nomeCompleto,
+  avatar: dto.fotoPerfil || DEFAULT_AVATAR,
+  role: mapRole(dto.perfil),
+  schoolClass: dto.turma,
+  subject: dto.disciplina?.nome ?? null,
+  xp: dto.pontuacao,
+  level: dto.nivel,
+});
+
+export const mapPublicProfile = (dto: PublicProfileResponseDto): PublicProfile => ({
+  id: dto.usuario.id,
+  name: dto.usuario.nomeCompleto,
+  avatar: dto.usuario.fotoPerfil || DEFAULT_AVATAR,
+  role: mapRole(dto.usuario.perfil),
+  schoolClass: dto.usuario.turma,
+  subject: dto.usuario.disciplina?.nome ?? null,
+  xp: dto.gamificacao.pontuacao,
+  level: dto.gamificacao.nivel,
+  posicaoRanking: dto.gamificacao.posicaoRankingGeral,
+  joinedAt: dto.usuario.dataCriacao,
+  completedMissionsCount: dto.estatisticas.quantidadeMissoesAvaliadas,
+  postsCount: dto.estatisticas.quantidadePublicacoes,
+  posts: dto.publicacoes.map((post) => ({
+    id: post.id,
+    title: post.titulo,
+    content: post.descricao,
+    imageUrl: post.imagemUrl,
+    likesCount: post.quantidadeCurtidas,
+    commentsCount: post.quantidadeComentarios,
+    createdAt: post.dataCriacao,
+  })),
 });
 
 export const mapNotification = (notification: NotificationDto): NotificationItem => {
