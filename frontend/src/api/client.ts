@@ -1,6 +1,7 @@
 import type { ApiErrorResponse, ApiSuccess } from "../types/api";
 
 const TOKEN_STORAGE_KEY = "educatech.jwt";
+const UNAUTHORIZED_EVENT = "educatech:unauthorized";
 
 export class ApiError extends Error {
   public readonly status: number;
@@ -32,6 +33,11 @@ export const setStoredToken = (token: string) => {
 
 export const clearStoredToken = () => {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
+};
+
+export const addUnauthorizedListener = (listener: () => void) => {
+  window.addEventListener(UNAUTHORIZED_EVENT, listener);
+  return () => window.removeEventListener(UNAUTHORIZED_EVENT, listener);
 };
 
 type RequestOptions = Omit<RequestInit, "body"> & {
@@ -74,8 +80,9 @@ export async function apiRequest<T>(
         : "Nao foi possivel comunicar com a API.";
     const details = payload && "erros" in payload ? payload.erros : undefined;
 
-    if (response.status === 401) {
+    if (response.status === 401 && authenticated) {
       clearStoredToken();
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
     }
 
     throw new ApiError(message, response.status, details);

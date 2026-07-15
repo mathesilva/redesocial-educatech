@@ -114,6 +114,7 @@ export interface RankingEntry {
 // Teacher Dashboard stats and submissions
 export interface MissionSubmission {
   id: string;
+  missionId?: string;
   studentName: string;
   studentAvatar: string;
   missionTitle: string;

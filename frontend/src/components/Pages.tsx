@@ -105,8 +105,12 @@ interface ScreenProps {
     difficulty: Mission["difficulty"];
   }) => Promise<void>;
   onSubmitMissionAnswer: (mission: Mission, answer: string) => Promise<void>;
+  onApproveMissionSubmission: (submission: MissionSubmission) => Promise<void>;
   onMarkNotificationAsRead: (id: string) => Promise<void>;
 }
+
+type MissionFilterStatus = "All" | "Disponível" | "Em Andamento" | "Concluída";
+type MissionDifficultyLabel = "Fácil" | "Médio" | "Difícil";
 
 // =========================================================
 // 1. LOGIN SCREEN
@@ -513,21 +517,22 @@ export const FeedScreen: React.FC<ScreenProps> = ({
           </div>
         </div>
 
-        {/* Post Creation Trigger */}
-        <div
-          onClick={() => navigate("criar-publicacao")}
-          className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md/5 transition-all p-4 cursor-pointer flex items-center justify-between group"
-        >
-          <div className="flex items-center gap-3">
-            <Avatar src={user.avatar} alt={user.name} role={user.role} />
-            <span className="text-sm font-medium text-brand-text-sub group-hover:text-brand-text-main transition-colors">
-              Compartilhe um resumo ou poste uma dúvida...
-            </span>
+        {user.role === "student" && (
+          <div
+            onClick={() => navigate("criar-publicacao")}
+            className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md/5 transition-all p-4 cursor-pointer flex items-center justify-between group"
+          >
+            <div className="flex items-center gap-3">
+              <Avatar src={user.avatar} alt={user.name} role={user.role} />
+              <span className="text-sm font-medium text-brand-text-sub group-hover:text-brand-text-main transition-colors">
+                Compartilhe um resumo ou poste uma dúvida...
+              </span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-blue-50 text-brand-primary flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Plus className="w-4 h-4" />
+            </div>
           </div>
-          <div className="w-8 h-8 rounded-full bg-blue-50 text-brand-primary flex items-center justify-center group-hover:scale-105 transition-transform">
-            <Plus className="w-4 h-4" />
-          </div>
-        </div>
+        )}
 
         {/* Post List */}
         <div className="space-y-4">
@@ -776,6 +781,7 @@ export const FeedScreen: React.FC<ScreenProps> = ({
 // 4. CRIAR PUBLICAÇÃO (CREATE POST)
 // =========================================================
 export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
+  user,
   navigate,
   triggerToast,
   onCreatePost,
@@ -794,6 +800,12 @@ export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (user.role !== "student") {
+      triggerToast("Somente alunos podem criar publicações.");
+      navigate("feed");
+      return;
+    }
+
     if (!title || !content) {
       triggerToast("Preencha o título e o conteúdo da postagem.");
       return;
@@ -1346,9 +1358,7 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
   missions,
   navigate,
 }) => {
-  const [filterStatus, setFilterStatus] = useState<
-    "All" | "Disponível" | "Em Andamento" | "Concluída"
-  >("All");
+  const [filterStatus, setFilterStatus] = useState<MissionFilterStatus>("All");
   const [filterDifficulty, setFilterDifficulty] = useState<string>("All");
 
   const filteredMissions = missions.filter((m) => {
@@ -1377,10 +1387,10 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 border border-slate-100 rounded-2xl">
         {/* Status filters */}
         <div className="flex flex-wrap gap-1">
-          {["All", "Disponível", "Em Andamento", "Concluída"].map((status) => (
+          {(["All", "Disponível", "Em Andamento", "Concluída"] as MissionFilterStatus[]).map((status) => (
             <button
               key={status}
-              onClick={() => setFilterStatus(status as any)}
+              onClick={() => setFilterStatus(status)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer select-none ${
                 filterStatus === status
                   ? "bg-brand-primary text-white"
@@ -1505,15 +1515,9 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
   onSubmitMissionAnswer,
 }) => {
   const mission = missions.find((m) => m.id === selectedMissionId);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<{
-    [qId: string]: number;
-  }>({});
-  const [quizCompleted, setQuizCompleted] = useState(false);
-  const [score, setScore] = useState(0);
-  const [quizFeedback, setQuizFeedback] = useState<"success" | "fail" | null>(
-    null,
-  );
+  const [missionAnswer, setMissionAnswer] = useState("");
+  const [missionSubmitting, setMissionSubmitting] = useState(false);
+  const [missionSubmitted, setMissionSubmitted] = useState(false);
 
   if (!mission) {
     return (
@@ -1532,76 +1536,33 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
     );
   }
 
-  const handleSelectOption = (qId: string, optIndex: number) => {
-    if (quizCompleted) return;
-    setSelectedAnswers((prev) => ({ ...prev, [qId]: optIndex }));
-  };
-
-  const handleNext = () => {
-    if (currentQuestionIndex < mission.questions.length - 1) {
-      setCurrentQuestionIndex((prev) => prev + 1);
+  const handleSubmitMission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (user.role !== "student") {
+      triggerToast("Somente alunos podem responder missões.");
+      return;
     }
-  };
 
-  const handlePrev = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex((prev) => prev - 1);
+    if (missionAnswer.trim().length < 10) {
+      triggerToast("A resposta deve ter pelo menos 10 caracteres.");
+      return;
     }
-  };
 
-  const handleResetQuiz = () => {
-    setCurrentQuestionIndex(0);
-    setSelectedAnswers({});
-    setQuizCompleted(false);
-    setQuizFeedback(null);
-  };
-
-  const handleSubmitQuiz = async () => {
-    // Check answers
-    let correctCount = 0;
-    mission.questions.forEach((q) => {
-      if (selectedAnswers[q.id] === q.correctOptionIndex) {
-        correctCount++;
-      }
-    });
-
-    setScore(correctCount);
-    setQuizCompleted(true);
-
-    const pass = correctCount === mission.questions.length;
-    if (pass) {
-      if (user.role === "student") {
-        try {
-          await onSubmitMissionAnswer(
-            mission,
-            `Resposta enviada pela interface: ${mission.instructions}`,
-          );
-        } catch (error) {
-          triggerToast(error instanceof Error ? error.message : "Erro ao enviar resposta.");
-          return;
-        }
-      }
-
-      // Update mission status
+    setMissionSubmitting(true);
+    try {
+      await onSubmitMissionAnswer(mission, missionAnswer.trim());
+      setMissionSubmitted(true);
       setMissions((prev) =>
-        prev.map((m) => {
-          if (m.id === mission.id) {
-            return { ...m, status: "Em Andamento" };
-          }
-          return m;
-        }),
+        prev.map((m) =>
+          m.id === mission.id ? { ...m, status: "Em Andamento" } : m,
+        ),
       );
-      setQuizFeedback("success");
-    } else {
-      setQuizFeedback("fail");
-      triggerToast("Alguns exercícios precisam de correção.");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao enviar resposta.");
+    } finally {
+      setMissionSubmitting(false);
     }
   };
-
-  const currentQuestion = mission.questions[currentQuestionIndex];
-  const allQuestionsAnswered = mission.questions.every(
-    (q) => selectedAnswers[q.id] !== undefined,
-  );
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -1676,94 +1637,54 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
         {/* Right Side: Interactive Quiz (Col 8) */}
         <div className="col-span-1 lg:col-span-8">
           <Card className="p-6 md:p-8 space-y-6">
-            {/* If Quiz is NOT complete or fails */}
-            {quizFeedback !== "success" ? (
+            {!missionSubmitted ? (
               <div className="space-y-6">
                 <div className="flex justify-between items-center border-b border-slate-50 pb-4">
                   <h4 className="text-sm font-bold text-brand-text-main">
-                    Exercício {currentQuestionIndex + 1} de{" "}
-                    {mission.questions.length}
+                    Resposta da missão
                   </h4>
                   <div className="text-xs font-semibold text-brand-text-sub bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                    Respostas: {Object.keys(selectedAnswers).length} /{" "}
-                    {mission.questions.length}
+                    {user.role === "student" ? "Aluno" : "Professor"}
                   </div>
                 </div>
 
-                {/* Question rendering */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-brand-text-main leading-relaxed">
-                    {currentQuestion.question}
-                  </h3>
-
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {currentQuestion.options.map((opt, oIdx) => {
-                      const isSelected =
-                        selectedAnswers[currentQuestion.id] === oIdx;
-                      return (
-                        <button
-                          key={oIdx}
-                          onClick={() =>
-                            handleSelectOption(currentQuestion.id, oIdx)
-                          }
-                          className={`w-full text-left text-xs p-4 rounded-xl border transition-all cursor-pointer ${
-                            isSelected
-                              ? "bg-blue-50/50 border-brand-primary text-brand-primary font-semibold"
-                              : "bg-white border-slate-100 hover:border-slate-200 text-brand-text-main"
-                          }`}
-                        >
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-slate-50 border border-slate-200 text-[10px] font-bold mr-3 text-brand-text-sub group-hover:bg-blue-50">
-                            {String.fromCharCode(65 + oIdx)}
-                          </span>
-                          {opt}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Error Banner if fail */}
-                {quizFeedback === "fail" && (
+                {user.role === "teacher" ? (
                   <Alert
-                    type="error"
-                    title="Ops! Respostas Incorretas"
-                    description="Alguma de suas respostas está errada. Mas não desanime, revise as opções e tente novamente!"
+                    type="info"
+                    title="Modo professor"
+                    description="Professores podem criar missões no painel docente. O envio de respostas é permitido apenas para alunos."
                   />
+                ) : (
+                  <form onSubmit={handleSubmitMission} className="space-y-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label
+                        htmlFor="mission-answer"
+                        className="text-sm font-medium text-brand-text-main"
+                      >
+                        Sua resposta
+                      </label>
+                      <textarea
+                        id="mission-answer"
+                        rows={6}
+                        value={missionAnswer}
+                        onChange={(e) => setMissionAnswer(e.target.value)}
+                        placeholder="Digite sua resposta para a missão..."
+                        className="w-full text-sm font-sans text-brand-text-main placeholder-slate-400 bg-white border border-slate-200 rounded-xl px-4 py-2.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-brand-primary"
+                        disabled={missionSubmitting}
+                      />
+                    </div>
+                    <div className="flex items-center justify-end border-t border-slate-50 pt-6">
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="sm"
+                        disabled={missionSubmitting || missionAnswer.trim().length < 10}
+                      >
+                        {missionSubmitting ? "Enviando..." : "Enviar Resposta"}
+                      </Button>
+                    </div>
+                  </form>
                 )}
-
-                {/* Quiz Navigation actions */}
-                <div className="flex items-center justify-between border-t border-slate-50 pt-6 mt-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handlePrev}
-                    disabled={currentQuestionIndex === 0}
-                  >
-                    Anterior
-                  </Button>
-
-                  {currentQuestionIndex < mission.questions.length - 1 ? (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handleNext}
-                      disabled={
-                        selectedAnswers[currentQuestion.id] === undefined
-                      }
-                    >
-                      Próxima
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handleSubmitQuiz}
-                      disabled={!allQuestionsAnswered}
-                    >
-                      Enviar Respostas
-                    </Button>
-                  )}
-                </div>
               </div>
             ) : (
               /* Success Celebration Screen */
@@ -1816,9 +1737,6 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
                 )}
 
                 <div className="flex gap-3 justify-center pt-4">
-                  <Button variant="outline" size="sm" onClick={handleResetQuiz}>
-                    Fazer Novamente (Revisar)
-                  </Button>
                   <Button
                     variant="primary"
                     size="sm"
@@ -2015,47 +1933,25 @@ export const RankingScreen: React.FC<ScreenProps> = ({ ranking, user }) => {
 // =========================================================
 export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   submissions,
-  setSubmissions,
   triggerToast,
-  setNotifications,
   disciplines,
   onCreateMission,
+  onApproveMissionSubmission,
   isLoading,
 }) => {
   const [newTitle, setNewTitle] = useState("");
   const [newSubject, setNewSubject] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newDifficulty, setNewDifficulty] = useState<
-    "Fácil" | "Médio" | "Difícil"
+    MissionDifficultyLabel
   >("Médio");
 
-  const handleApprove = (id: string) => {
-    setSubmissions((prev) =>
-      prev.map((sub) => {
-        if (sub.id === id) {
-          return { ...sub, status: "Aprovado" as const };
-        }
-        return sub;
-      }),
-    );
-
-    const sub = submissions.find((s) => s.id === id);
-    if (sub) {
-      // Notify the student
-      setNotifications((prev) => [
-        {
-          id: `notif-app-${Date.now()}`,
-          title: "Exercício de Biologia Aprovado! 🩺",
-          content: `Parabéns, ${sub.studentName}! Seu professor aprovou sua submissão para a missão "${sub.missionTitle}".`,
-          type: "system",
-          createdAt: new Date().toISOString(),
-          read: false,
-        },
-        ...prev,
-      ]);
+  const handleApprove = async (submission: MissionSubmission) => {
+    try {
+      await onApproveMissionSubmission(submission);
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao avaliar submissão.");
     }
-
-    triggerToast("Submissão revisada e aprovada com sucesso!");
   };
 
   const subjects = disciplines.map((discipline) => discipline.nome);
@@ -2174,8 +2070,9 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {submissions.map((sub) => (
-                    <tr key={sub.id} className="hover:bg-slate-50/30">
+                  {submissions.length > 0 ? (
+                    submissions.map((sub) => (
+                      <tr key={sub.id} className="hover:bg-slate-50/30">
                       <td className="px-6 py-3.5 flex items-center gap-2.5">
                         <img
                           src={sub.studentAvatar}
@@ -2204,7 +2101,7 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                           <Button
                             variant="primary"
                             size="sm"
-                            onClick={() => handleApprove(sub.id)}
+                            onClick={() => void handleApprove(sub)}
                             className="px-3 py-1 rounded-lg text-[10px]"
                           >
                             Aprovar
@@ -2215,8 +2112,18 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                           </span>
                         )}
                       </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-6 py-8 text-center text-brand-text-sub"
+                      >
+                        Nenhuma submissão pendente encontrada.
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2258,7 +2165,9 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                 id="teach-miss-diff"
                 label="Dificuldade Estimada"
                 value={newDifficulty}
-                onChange={(e) => setNewDifficulty(e.target.value as any)}
+                onChange={(e) =>
+                  setNewDifficulty(e.target.value as MissionDifficultyLabel)
+                }
                 options={[
                   { value: "Fácil", label: "Fácil" },
                   { value: "Médio", label: "Médio" },
@@ -2308,7 +2217,10 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
   triggerToast,
   onMarkNotificationAsRead,
 }) => {
+  const [markingReadId, setMarkingReadId] = useState<string | null>(null);
+
   const markAllRead = async () => {
+    setMarkingReadId("all");
     try {
       await Promise.all(
         notifications
@@ -2318,14 +2230,19 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
       triggerToast("Todas as notificações foram marcadas como lidas.");
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Erro ao atualizar notificações.");
+    } finally {
+      setMarkingReadId(null);
     }
   };
 
   const markRead = async (id: string) => {
+    setMarkingReadId(id);
     try {
       await onMarkNotificationAsRead(id);
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Erro ao atualizar notificação.");
+    } finally {
+      setMarkingReadId(null);
     }
   };
 
@@ -2349,8 +2266,9 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
             size="sm"
             className="text-xs"
             onClick={markAllRead}
+            disabled={markingReadId !== null}
           >
-            Marcar como lidas
+            {markingReadId === "all" ? "Atualizando..." : "Marcar como lidas"}
           </Button>
         </div>
       </div>
@@ -2421,9 +2339,14 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
                           void markRead(notif.id);
                         }
                       }}
+                      disabled={markingReadId !== null || notif.read}
                       className="text-[10px] font-bold text-brand-text-sub hover:text-brand-text-main hover:underline transition-colors ml-auto"
                     >
-                      {notif.read ? "Lida" : "Marcar como lida"}
+                      {markingReadId === notif.id
+                        ? "Atualizando..."
+                        : notif.read
+                          ? "Lida"
+                          : "Marcar como lida"}
                     </button>
                   </div>
                 </div>

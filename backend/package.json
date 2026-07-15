@@ -26,6 +26,7 @@
   ],
   "license": "UNLICENSED",
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
     "@fastify/jwt": "^10.2.0",
     "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",

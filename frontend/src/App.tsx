@@ -38,7 +38,12 @@ import {
 } from "./data";
 
 import { authApi } from "./api/auth";
-import { clearStoredToken, getStoredToken, setStoredToken } from "./api/client";
+import {
+  addUnauthorizedListener,
+  clearStoredToken,
+  getStoredToken,
+  setStoredToken,
+} from "./api/client";
 import { commentsApi } from "./api/comments";
 import { disciplinesApi } from "./api/disciplines";
 import { missionsApi } from "./api/missions";
@@ -155,9 +160,53 @@ export default function App() {
     setPosts(enriched);
   };
 
-  const loadMissions = async () => {
+  const loadMissions = async (role: UserProfile["role"] = user.role) => {
     const response = await missionsApi.list();
-    setMissions(response.itens.map(mapMission));
+    const mappedMissions = await Promise.all(
+      response.itens.map(async (mission) => {
+        const mappedMission = mapMission(mission);
+
+        if (role !== "student") {
+          return mappedMission;
+        }
+
+        const answer = await missionsApi.myAnswer(mission.id).catch(() => null);
+
+        if (!answer) {
+          return mappedMission;
+        }
+
+        return {
+          ...mappedMission,
+          status: answer.status === "AVALIADA" ? "Concluída" : "Em Andamento",
+        } as Mission;
+      }),
+    );
+
+    setMissions(mappedMissions);
+    return mappedMissions;
+  };
+
+  const loadMissionSubmissions = async (items: Mission[]) => {
+    const answers = await Promise.all(
+      items.map(async (mission) => {
+        const missionAnswers = await missionsApi.listAnswers(mission.id).catch(() => []);
+
+        return missionAnswers.map((answer): MissionSubmission => ({
+          id: answer.id,
+          missionId: mission.id,
+          studentName: answer.aluno.nomeCompleto,
+          studentAvatar: INITIAL_USER.avatar,
+          missionTitle: mission.title,
+          score: answer.nota === null ? "Pendente" : `${answer.nota}%`,
+          submittedAt: answer.dataEnvio,
+          xpAwarded: answer.nota ?? 0,
+          status: answer.status === "AVALIADA" ? "Aprovado" : "Pendente",
+        }));
+      }),
+    );
+
+    setSubmissions(answers.flat());
   };
 
   const loadNotifications = async () => {
@@ -169,7 +218,17 @@ export default function App() {
     setLoadingMessage("Carregando dados da plataforma...");
     setGlobalError("");
     const me = await loadProfile();
-    await Promise.all([loadDisciplines(), loadPosts(), loadMissions(), loadNotifications()]);
+    const [, , missionItems] = await Promise.all([
+      loadDisciplines(),
+      loadPosts(),
+      loadMissions(mapRole(me.perfil)),
+      loadNotifications(),
+    ]);
+
+    if (me.perfil === "PROFESSOR") {
+      await loadMissionSubmissions(missionItems);
+    }
+
     setIsAuthenticated(true);
     return me;
   };
@@ -232,6 +291,17 @@ export default function App() {
     setCurrentScreen("login");
   };
 
+  useEffect(() => {
+    return addUnauthorizedListener(() => {
+      setIsAuthenticated(false);
+      setPosts([]);
+      setMissions([]);
+      setNotifications([]);
+      setCurrentScreen("login");
+      setGlobalError("Sessao expirada. Faça login novamente.");
+    });
+  }, []);
+
   const handleLogin = async (email: string, senha: string) => {
     setLoadingMessage("Entrando...");
     setGlobalError("");
@@ -240,7 +310,7 @@ export default function App() {
       setStoredToken(response.accessToken);
       const me = await loadAuthenticatedData();
       triggerToast("Login efetuado com sucesso!");
-      navigate(me.perfil === "PROFESSOR" ? "professor" : "feed");
+      setCurrentScreen(me.perfil === "PROFESSOR" ? "professor" : "feed");
     } catch (error) {
       const message = getErrorMessage(error);
       setGlobalError(message);
@@ -365,7 +435,33 @@ export default function App() {
 
   const handleSubmitMissionAnswer = async (mission: Mission, answer: string) => {
     await missionsApi.answer(mission.id, { resposta: answer });
+    setMissions((prev) =>
+      prev.map((item) =>
+        item.id === mission.id ? { ...item, status: "Em Andamento" } : item,
+      ),
+    );
     triggerToast("Resposta enviada para avaliação do professor.");
+  };
+
+  const handleApproveMissionSubmission = async (submission: MissionSubmission) => {
+    if (!submission.missionId) {
+      throw new Error("Resposta de missão sem identificador.");
+    }
+
+    await missionsApi.evaluateAnswer(submission.missionId, submission.id, {
+      nota: 100,
+      feedbackProfessor: "Resposta aprovada.",
+    });
+
+    setSubmissions((prev) =>
+      prev.map((item) =>
+        item.id === submission.id
+          ? { ...item, status: "Aprovado", score: "100%", xpAwarded: 100 }
+          : item,
+      ),
+    );
+
+    triggerToast("Submissão avaliada com sucesso!");
   };
 
   const handleMarkNotificationAsRead = async (id: string) => {
@@ -438,6 +534,7 @@ export default function App() {
       onCreateComment: handleCreateComment,
       onCreateMission: handleCreateMission,
       onSubmitMissionAnswer: handleSubmitMissionAnswer,
+      onApproveMissionSubmission: handleApproveMissionSubmission,
       onMarkNotificationAsRead: handleMarkNotificationAsRead,
     };
 

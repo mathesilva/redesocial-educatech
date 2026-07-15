@@ -180,6 +180,29 @@ export interface CreateMissionAnswerRequest {
   imagemUrl?: string;
 }
 
+export interface MissionAnswerDto {
+  resposta: string;
+  status: "ENVIADA" | "AVALIADA";
+  nota: number | null;
+  feedbackProfessor: string | null;
+  dataEnvio: string;
+}
+
+export interface MissionAnswerForTeacherDto extends MissionAnswerDto {
+  id: string;
+  imagemUrl: string | null;
+  aluno: {
+    id: string;
+    nomeCompleto: string;
+    email: string;
+  };
+}
+
+export interface EvaluateMissionAnswerRequest {
+  nota: number;
+  feedbackProfessor?: string;
+}
+
 export interface NotificationDto {
   id: string;
   titulo: string;
