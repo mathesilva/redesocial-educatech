@@ -1,3 +1,11 @@
 import { z } from "zod";
 
-export const notificationsSchemas = z.object({}).strict();
+export const marcarNotificacaoLidaParamsSchema = z
+  .object({
+    id: z.string().uuid("Notificacao deve ser um UUID valido."),
+  })
+  .strict();
+
+export const notificationsSchemas = {
+  marcarLidaParams: marcarNotificacaoLidaParamsSchema,
+};

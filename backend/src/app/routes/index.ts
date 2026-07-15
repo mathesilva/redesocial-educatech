@@ -5,6 +5,7 @@ import { commentsRoutes } from "../../modules/comments/index.js";
 import { dashboardRoutes } from "../../modules/dashboard/index.js";
 import { disciplinasRoutes } from "../../modules/disciplinas/index.js";
 import { missionsRoutes } from "../../modules/missions/index.js";
+import { notificationsRoutes } from "../../modules/notifications/index.js";
 import { postsRoutes } from "../../modules/posts/index.js";
 import { profileRoutes } from "../../modules/profile/index.js";
 import { rankingRoutes } from "../../modules/ranking/index.js";
@@ -19,6 +20,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(dashboardRoutes);
   await app.register(disciplinasRoutes);
   await app.register(missionsRoutes);
+  await app.register(notificationsRoutes);
   await app.register(postsRoutes);
   await app.register(profileRoutes);
   await app.register(rankingRoutes);

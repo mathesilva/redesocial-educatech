@@ -43,6 +43,17 @@ enum StatusRespostaMissao {
   @@map("status_resposta_missao")
 }
 
+enum TipoNotificacao {
+  CURTIDA
+  COMENTARIO
+  MISSAO
+  PUBLICACAO_APROVADA
+  PUBLICACAO_REPROVADA
+  AVALIACAO
+
+  @@map("tipo_notificacao")
+}
+
 model Usuario {
   id              String        @id @default(uuid()) @db.Uuid
   nomeCompleto    String        @map("nome_completo")
@@ -64,6 +75,7 @@ model Usuario {
   reacoes         Reacao[]
   missoes         Missao[]
   respostasMissao RespostaMissao[]
+  notificacoes    Notificacao[]
 
   @@index([escola])
   @@index([turma])
@@ -186,4 +198,20 @@ model RespostaMissao {
   @@index([missaoId])
   @@index([status])
   @@map("respostas_missao")
+}
+
+model Notificacao {
+  id          String          @id @default(uuid()) @db.Uuid
+  usuarioId   String          @map("usuario_id") @db.Uuid
+  titulo      String
+  mensagem    String
+  tipo        TipoNotificacao
+  lida        Boolean         @default(false)
+  dataCriacao DateTime        @default(now()) @map("data_criacao")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId])
+  @@index([dataCriacao])
+  @@map("notificacoes")
 }
