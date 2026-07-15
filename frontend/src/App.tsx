@@ -16,12 +16,7 @@ import {
   User as UserIcon,
   Menu,
   X,
-  Sparkles,
-  ShieldCheck,
   LogOut,
-  BookMarked,
-  Layout,
-  PlusCircle,
 } from "lucide-react";
 
 // Import Types
@@ -32,17 +27,36 @@ import {
   NotificationItem,
   RankingEntry,
   MissionSubmission,
+  Discipline,
 } from "./types";
 
 // Import Mock Data
 import {
   INITIAL_USER,
-  INITIAL_POSTS,
-  INITIAL_MISSIONS,
-  INITIAL_NOTIFICATIONS,
   INITIAL_RANKING,
   INITIAL_SUBMISSIONS,
 } from "./data";
+
+import { authApi } from "./api/auth";
+import { clearStoredToken, getStoredToken, setStoredToken } from "./api/client";
+import { commentsApi } from "./api/comments";
+import { disciplinesApi } from "./api/disciplines";
+import { missionsApi } from "./api/missions";
+import { notificationsApi } from "./api/notifications";
+import { postsApi } from "./api/posts";
+import { profileApi } from "./api/profile";
+import { reactionsApi } from "./api/reactions";
+import { usersApi } from "./api/users";
+import {
+  mapApiDifficulty,
+  mapApiRole,
+  mapComment,
+  mapMission,
+  mapNotification,
+  mapPost,
+  mapProfileToUser,
+  mapRole,
+} from "./services/mappers";
 
 // Import Reusable Design System components
 import { Toast, Avatar, Badge, Button } from "./components/DesignSystem";
@@ -65,17 +79,18 @@ import {
 export default function App() {
   // Global States
   const [user, setUser] = useState<UserProfile>(INITIAL_USER);
-  const [posts, setPosts] = useState<Post[]>(INITIAL_POSTS);
-  const [missions, setMissions] = useState<Mission[]>(INITIAL_MISSIONS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(
-    INITIAL_NOTIFICATIONS,
-  );
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [ranking, setRanking] = useState<RankingEntry[]>(INITIAL_RANKING);
   const [submissions, setSubmissions] =
     useState<MissionSubmission[]>(INITIAL_SUBMISSIONS);
 
   // Routing and Navigation States
-  const [currentScreen, setCurrentScreen] = useState<string>("feed");
+  const [currentScreen, setCurrentScreen] = useState<string>(
+    getStoredToken() ? "feed" : "login",
+  );
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedMissionId, setSelectedMissionId] = useState<string | null>(
     null,
@@ -84,6 +99,10 @@ export default function App() {
   // UI States
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState({ message: "", visible: false });
+  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getStoredToken()));
+  const [isBootstrapping, setIsBootstrapping] = useState(Boolean(getStoredToken()));
+  const [loadingMessage, setLoadingMessage] = useState("");
+  const [globalError, setGlobalError] = useState("");
 
   // Reset page scroll on screen change
   useEffect(() => {
@@ -97,8 +116,103 @@ export default function App() {
     }, 3000);
   };
 
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error ? error.message : "Nao foi possivel concluir a operacao.";
+
+  const loadDisciplines = async () => {
+    const response = await disciplinesApi.list();
+    setDisciplines(response.itens);
+    return response.itens;
+  };
+
+  const loadProfile = async () => {
+    const [me, profile] = await Promise.all([authApi.me(), profileApi.get()]);
+    setUser(mapProfileToUser(profile, mapRole(me.perfil), me.email));
+    return me;
+  };
+
+  const loadPosts = async () => {
+    const response = await postsApi.list();
+    const enriched = await Promise.all(
+      response.itens.map(async (post) => {
+        const [comments, reactions] = await Promise.all([
+          commentsApi.listByPost(post.id).catch(() => []),
+          reactionsApi.summary(post.id).catch(() => ({
+            quantidadeCurtidas: 0,
+            usuarioCurtiu: false,
+          })),
+        ]);
+
+        return mapPost(
+          post,
+          comments.map(mapComment),
+          reactions.quantidadeCurtidas,
+          reactions.usuarioCurtiu,
+        );
+      }),
+    );
+
+    setPosts(enriched);
+  };
+
+  const loadMissions = async () => {
+    const response = await missionsApi.list();
+    setMissions(response.itens.map(mapMission));
+  };
+
+  const loadNotifications = async () => {
+    const items = await notificationsApi.list();
+    setNotifications(items.map(mapNotification));
+  };
+
+  const loadAuthenticatedData = async () => {
+    setLoadingMessage("Carregando dados da plataforma...");
+    setGlobalError("");
+    const me = await loadProfile();
+    await Promise.all([loadDisciplines(), loadPosts(), loadMissions(), loadNotifications()]);
+    setIsAuthenticated(true);
+    return me;
+  };
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      await loadDisciplines().catch(() => []);
+
+      if (!getStoredToken()) {
+        setIsBootstrapping(false);
+        return;
+      }
+
+      try {
+        const me = await loadAuthenticatedData();
+        setCurrentScreen(me.perfil === "PROFESSOR" ? "professor" : "feed");
+      } catch (error) {
+        clearStoredToken();
+        setIsAuthenticated(false);
+        setCurrentScreen("login");
+        setGlobalError(getErrorMessage(error));
+      } finally {
+        setLoadingMessage("");
+        setIsBootstrapping(false);
+      }
+    };
+
+    void bootstrap();
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated && currentScreen !== "login" && currentScreen !== "cadastro") {
+      setCurrentScreen("login");
+    }
+  }, [currentScreen, isAuthenticated]);
+
   // Safe navigation function
   const navigate = (screenName: string, extraId?: string) => {
+    if (!isAuthenticated && screenName !== "login" && screenName !== "cadastro") {
+      setCurrentScreen("login");
+      return;
+    }
+
     if (screenName === "detalhes-publicacao" && extraId) {
       setSelectedPostId(extraId);
     } else if (screenName === "detalhes-missao" && extraId) {
@@ -108,34 +222,159 @@ export default function App() {
     setMobileMenuOpen(false);
   };
 
-  const toggleRole = () => {
-    if (user.role === "student") {
-      setUser((prev) => ({
-        ...prev,
-        role: "teacher",
-        name: "Prof. Lucas Rocha",
-        schoolClass: "Física - Ensino Médio",
-      }));
-      triggerToast("Perfil alterado para: Professor");
-      navigate("professor");
-    } else {
-      setUser((prev) => ({
-        ...prev,
-        role: "student",
-        name: "Thiago Alencar",
-        schoolClass: "2º Ano A - Matutino",
-        xp: 1420,
-        level: 5,
-        points: 340,
-      }));
-      triggerToast("Perfil alterado para: Thiago (Aluno)");
-      navigate("feed");
+  const handleLogout = () => {
+    clearStoredToken();
+    setIsAuthenticated(false);
+    setPosts([]);
+    setMissions([]);
+    setNotifications([]);
+    triggerToast("Desconectado com sucesso!");
+    setCurrentScreen("login");
+  };
+
+  const handleLogin = async (email: string, senha: string) => {
+    setLoadingMessage("Entrando...");
+    setGlobalError("");
+    try {
+      const response = await authApi.login({ email, senha });
+      setStoredToken(response.accessToken);
+      const me = await loadAuthenticatedData();
+      triggerToast("Login efetuado com sucesso!");
+      navigate(me.perfil === "PROFESSOR" ? "professor" : "feed");
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setGlobalError(message);
+      throw error;
+    } finally {
+      setLoadingMessage("");
     }
   };
 
-  const handleLogout = () => {
-    triggerToast("Desconectado com sucesso!");
-    navigate("login");
+  const handleRegister = async (data: {
+    name: string;
+    email: string;
+    password: string;
+    confirmPassword: string;
+    role: UserProfile["role"];
+    school: string;
+    schoolClass: string;
+    disciplineId?: string | null;
+  }) => {
+    setLoadingMessage("Criando conta...");
+    setGlobalError("");
+    try {
+      await usersApi.register({
+        nomeCompleto: data.name,
+        email: data.email,
+        senha: data.password,
+        confirmarSenha: data.confirmPassword,
+        perfil: mapApiRole(data.role),
+        escola: data.school,
+        turma: data.role === "student" ? data.schoolClass : null,
+        disciplinaId: data.role === "teacher" ? data.disciplineId || null : null,
+      });
+
+      await handleLogin(data.email, data.password);
+      triggerToast("Conta criada com sucesso! Boas-vindas.");
+    } catch (error) {
+      setGlobalError(getErrorMessage(error));
+      throw error;
+    } finally {
+      setLoadingMessage("");
+    }
+  };
+
+  const findDisciplineId = (subject: string) =>
+    disciplines.find((discipline) => discipline.nome === subject)?.id ||
+    disciplines[0]?.id;
+
+  const handleCreatePost = async (data: { title: string; content: string; subject: string }) => {
+    const disciplineId = findDisciplineId(data.subject);
+    if (!disciplineId) {
+      throw new Error("Nenhuma disciplina cadastrada no backend.");
+    }
+
+    const created = await postsApi.create({
+      titulo: data.title,
+      descricao: data.content,
+      disciplinaId: disciplineId,
+    });
+
+    setPosts((prev) => [mapPost(created), ...prev]);
+    triggerToast(
+      created.status === "PENDENTE"
+        ? "Publicacao enviada para aprovacao."
+        : "Publicacao enviada para o feed!",
+    );
+    navigate("feed");
+  };
+
+  const handleToggleReaction = async (postId: string) => {
+    const summary = await reactionsApi.toggle(postId);
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              likedByMe: summary.usuarioCurtiu,
+              likesCount: summary.quantidadeCurtidas,
+            }
+          : post,
+      ),
+    );
+  };
+
+  const handleCreateComment = async (postId: string, content: string) => {
+    const created = await commentsApi.create(postId, content);
+    const comment = mapComment(created);
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, comments: [...post.comments, comment] } : post,
+      ),
+    );
+  };
+
+  const handleCreateMission = async (data: {
+    title: string;
+    description: string;
+    subject: string;
+    difficulty: Mission["difficulty"];
+  }) => {
+    const disciplineId = findDisciplineId(data.subject);
+    if (!disciplineId) {
+      throw new Error("Nenhuma disciplina cadastrada no backend.");
+    }
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 7);
+
+    const created = await missionsApi.create({
+      titulo: data.title,
+      descricao: data.description,
+      criteriosAvaliacao: data.description,
+      prazo: dueDate.toISOString(),
+      pontuacao:
+        data.difficulty === "Fácil" ? 100 : data.difficulty === "Médio" ? 150 : 200,
+      dificuldade: mapApiDifficulty(data.difficulty),
+      disciplinaId: disciplineId,
+    });
+
+    setMissions((prev) => [mapMission(created), ...prev]);
+    triggerToast("Nova missão publicada para os estudantes!");
+  };
+
+  const handleSubmitMissionAnswer = async (mission: Mission, answer: string) => {
+    await missionsApi.answer(mission.id, { resposta: answer });
+    triggerToast("Resposta enviada para avaliação do professor.");
+  };
+
+  const handleMarkNotificationAsRead = async (id: string) => {
+    const updated = await notificationsApi.markAsRead(id);
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        notification.id === id ? mapNotification(updated) : notification,
+      ),
+    );
   };
 
   // Notifications Count
@@ -189,6 +428,17 @@ export default function App() {
       selectedPostId,
       selectedMissionId,
       triggerToast,
+      disciplines,
+      isLoading: Boolean(loadingMessage),
+      errorMessage: globalError,
+      onLogin: handleLogin,
+      onRegister: handleRegister,
+      onCreatePost: handleCreatePost,
+      onToggleReaction: handleToggleReaction,
+      onCreateComment: handleCreateComment,
+      onCreateMission: handleCreateMission,
+      onSubmitMissionAnswer: handleSubmitMissionAnswer,
+      onMarkNotificationAsRead: handleMarkNotificationAsRead,
     };
 
     switch (currentScreen) {
@@ -248,20 +498,6 @@ export default function App() {
         {/* Top switch button & controls */}
         <div className="flex items-center gap-3">
           {/* Role Changer Shortcut (Except inside auth) */}
-          {!isAuthScreen && (
-            <button
-              onClick={toggleRole}
-              className="text-xs font-bold border border-dashed border-slate-200 bg-white hover:bg-slate-50 text-brand-text-main px-3 py-1.5 rounded-xl transition-colors cursor-pointer hidden md:flex items-center gap-1.5"
-              title="Trocar papel para testar o painel do professor vs perfil do estudante"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-brand-secondary" />
-              Simular:{" "}
-              <span className="text-brand-primary">
-                {user.role === "student" ? "Professor" : "Estudante"}
-              </span>
-            </button>
-          )}
-
           {/* Notifications Quick Access */}
           {!isAuthScreen && (
             <button
@@ -292,6 +528,18 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {(isBootstrapping || loadingMessage) && (
+        <div className="bg-blue-50 border-b border-blue-100 px-6 py-2 text-center text-xs font-semibold text-brand-primary">
+          {loadingMessage || "Carregando sessão..."}
+        </div>
+      )}
+
+      {globalError && !isAuthScreen && (
+        <div className="bg-red-50 border-b border-red-100 px-6 py-2 text-center text-xs font-semibold text-brand-danger">
+          {globalError}
+        </div>
+      )}
 
       {/* Main Layout Area */}
       <div className="flex-1 flex flex-col lg:flex-row relative max-w-7xl w-full mx-auto">
@@ -397,18 +645,19 @@ export default function App() {
                   <span>Meu Perfil</span>
                 </button>
 
-                {/* Teacher Only Tab (Shown for simulated testing) */}
-                <button
-                  onClick={() => navigate("professor")}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    currentScreen === "professor"
-                      ? "bg-amber-50 text-amber-700 border-l-2 border-brand-secondary"
-                      : "text-brand-text-sub hover:bg-slate-50 hover:text-brand-text-main"
-                  }`}
-                >
-                  <Users className="w-4 h-4 text-amber-500" />
-                  <span>Painel do Professor</span>
-                </button>
+                {user.role === "teacher" && (
+                  <button
+                    onClick={() => navigate("professor")}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      currentScreen === "professor"
+                        ? "bg-amber-50 text-amber-700 border-l-2 border-brand-secondary"
+                        : "text-brand-text-sub hover:bg-slate-50 hover:text-brand-text-main"
+                    }`}
+                  >
+                    <Users className="w-4 h-4 text-amber-500" />
+                    <span>Painel do Professor</span>
+                  </button>
+                )}
               </nav>
             </div>
 
@@ -465,21 +714,6 @@ export default function App() {
                     </p>
                   </div>
                 </div>
-
-                {/* Role Switcher in Mobile Drawer */}
-                <button
-                  onClick={() => {
-                    toggleRole();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full text-xs font-bold border border-dashed border-slate-200 bg-white hover:bg-slate-50 text-brand-text-main px-3 py-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-brand-secondary" />
-                  Simular:{" "}
-                  <span className="text-brand-primary">
-                    {user.role === "student" ? "Professor" : "Estudante"}
-                  </span>
-                </button>
 
                 <nav className="space-y-1">
                   <button

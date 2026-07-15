@@ -53,6 +53,7 @@ import {
   NotificationItem,
   RankingEntry,
   MissionSubmission,
+  Discipline,
 } from "../types";
 
 // =========================================================
@@ -76,6 +77,35 @@ interface ScreenProps {
   selectedPostId?: string | null;
   selectedMissionId?: string | null;
   triggerToast: (msg: string) => void;
+  disciplines: Discipline[];
+  isLoading: boolean;
+  errorMessage: string;
+  onLogin: (email: string, senha: string) => Promise<void>;
+  onRegister: (data: {
+    name: string;
+    email: string;
+    password: string;
+    confirmPassword: string;
+    role: UserProfile["role"];
+    school: string;
+    schoolClass: string;
+    disciplineId?: string | null;
+  }) => Promise<void>;
+  onCreatePost: (data: {
+    title: string;
+    content: string;
+    subject: string;
+  }) => Promise<void>;
+  onToggleReaction: (postId: string) => Promise<void>;
+  onCreateComment: (postId: string, content: string) => Promise<void>;
+  onCreateMission: (data: {
+    title: string;
+    description: string;
+    subject: string;
+    difficulty: Mission["difficulty"];
+  }) => Promise<void>;
+  onSubmitMissionAnswer: (mission: Mission, answer: string) => Promise<void>;
+  onMarkNotificationAsRead: (id: string) => Promise<void>;
 }
 
 // =========================================================
@@ -83,14 +113,15 @@ interface ScreenProps {
 // =========================================================
 export const LoginScreen: React.FC<ScreenProps> = ({
   navigate,
-  triggerToast,
-  setUser,
+  onLogin,
+  isLoading,
+  errorMessage,
 }) => {
   const [email, setEmail] = useState("thiago.alencar@escola.com");
   const [password, setPassword] = useState("123456");
   const [error, setError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.includes("@")) {
       setError("E-mail inválido. Por favor, digite um e-mail válido.");
@@ -102,55 +133,10 @@ export const LoginScreen: React.FC<ScreenProps> = ({
     }
     setError("");
 
-    // Simulate login
-    if (
-      email.toLowerCase().includes("teacher") ||
-      email.toLowerCase().includes("prof")
-    ) {
-      setUser((prev) => ({
-        ...prev,
-        role: "teacher",
-        name: "Prof. Lucas Rocha",
-        schoolClass: "Física - Ensino Médio",
-      }));
-      triggerToast("Bem-vindo, Professor Lucas!");
-      navigate("professor");
-    } else {
-      setUser((prev) => ({
-        ...prev,
-        role: "student",
-        name: "Thiago Alencar",
-        schoolClass: "2º Ano A - Matutino",
-      }));
-      triggerToast("Login efetuado com sucesso!");
-      navigate("feed");
-    }
-  };
-
-  const loginAs = (role: "student" | "teacher") => {
-    if (role === "teacher") {
-      setEmail("prof.lucas@escola.com");
-      setUser((prev) => ({
-        ...prev,
-        role: "teacher",
-        name: "Prof. Lucas Rocha",
-        schoolClass: "Física - Ensino Médio",
-      }));
-      triggerToast("Sessão simulada como Professor.");
-      navigate("professor");
-    } else {
-      setEmail("thiago.alencar@escola.com");
-      setUser((prev) => ({
-        ...prev,
-        role: "student",
-        name: "Thiago Alencar",
-        schoolClass: "2º Ano A - Matutino",
-        xp: 1420,
-        level: 5,
-        points: 340,
-      }));
-      triggerToast("Sessão simulada como Thiago.");
-      navigate("feed");
+    try {
+      await onLogin(email, password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao autenticar.");
     }
   };
 
@@ -170,8 +156,8 @@ export const LoginScreen: React.FC<ScreenProps> = ({
           </p>
         </div>
 
-        {error && (
-          <Alert type="error" title="Erro de Acesso" description={error} />
+        {(error || errorMessage) && (
+          <Alert type="error" title="Erro de Acesso" description={error || errorMessage} />
         )}
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -211,8 +197,13 @@ export const LoginScreen: React.FC<ScreenProps> = ({
             </a>
           </div>
 
-          <Button type="submit" variant="primary" className="w-full py-3 mt-2">
-            Entrar na Plataforma
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full py-3 mt-2"
+            disabled={isLoading}
+          >
+            {isLoading ? "Entrando..." : "Entrar na Plataforma"}
           </Button>
         </form>
 
@@ -230,29 +221,6 @@ export const LoginScreen: React.FC<ScreenProps> = ({
         >
           Criar Nova Conta de Estudante
         </Button>
-
-        {/* Quick Simulator Switcher (Very helpful for UX review) */}
-        <div className="bg-slate-50 p-4 rounded-2xl space-y-2 border border-slate-100">
-          <span className="text-[10px] font-bold text-brand-text-sub uppercase tracking-wider block text-center">
-            Atalho de Simulação Rápida
-          </span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => loginAs("student")}
-              className="px-2 py-1.5 bg-white border border-slate-200 text-xs font-semibold text-brand-primary rounded-xl hover:bg-blue-50 hover:border-blue-200 transition-colors"
-            >
-              Entrar como Aluno
-            </button>
-            <button
-              type="button"
-              onClick={() => loginAs("teacher")}
-              className="px-2 py-1.5 bg-white border border-slate-200 text-xs font-semibold text-amber-600 rounded-xl hover:bg-amber-50 hover:border-amber-200 transition-colors"
-            >
-              Entrar como Professor
-            </button>
-          </div>
-        </div>
       </Card>
     </div>
   );
@@ -264,36 +232,53 @@ export const LoginScreen: React.FC<ScreenProps> = ({
 export const CadastroScreen: React.FC<ScreenProps> = ({
   navigate,
   triggerToast,
-  setUser,
+  onRegister,
+  disciplines,
+  isLoading,
+  errorMessage,
 }) => {
   const [role, setRole] = useState<"student" | "teacher">("student");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [school, setSchool] = useState("");
   const [schoolClass, setSchoolClass] = useState("2º Ano A - Matutino");
+  const [disciplineId, setDisciplineId] = useState("");
+  const [formError, setFormError] = useState("");
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !confirmPassword || !school) {
       triggerToast("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
 
-    setUser((prev) => ({
-      ...prev,
-      name,
-      email,
-      role,
-      schoolClass: role === "teacher" ? "Professor Conselheiro" : schoolClass,
-      xp: role === "teacher" ? 0 : 100, // starting XP
-      level: role === "teacher" ? 1 : 1,
-    }));
+    if (password !== confirmPassword) {
+      setFormError("A confirmação de senha deve ser igual à senha.");
+      return;
+    }
 
-    triggerToast("Conta criada com sucesso! Boas-vindas.");
-    if (role === "teacher") {
-      navigate("professor");
-    } else {
-      navigate("feed");
+    if (role === "teacher" && !disciplineId) {
+      setFormError("Selecione uma disciplina para cadastrar professor.");
+      return;
+    }
+
+    setFormError("");
+
+    try {
+      await onRegister({
+        name,
+        email,
+        password,
+        confirmPassword,
+        role,
+        school,
+        schoolClass,
+        disciplineId,
+      });
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Erro ao cadastrar.");
     }
   };
 
@@ -308,6 +293,10 @@ export const CadastroScreen: React.FC<ScreenProps> = ({
             Faça parte da nossa comunidade de aprendizado.
           </p>
         </div>
+
+        {(formError || errorMessage) && (
+          <Alert type="error" title="Erro no Cadastro" description={formError || errorMessage} />
+        )}
 
         {/* Role Selector */}
         <div className="flex p-1 bg-slate-50 border border-slate-100 rounded-xl gap-1">
@@ -356,10 +345,27 @@ export const CadastroScreen: React.FC<ScreenProps> = ({
           <Input
             id="register-password"
             label="Senha"
-            placeholder="No mínimo 6 caracteres"
+            placeholder="No mínimo 8 caracteres"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <Input
+            id="register-confirm-password"
+            label="Confirmar Senha"
+            placeholder="Repita a senha"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
+          <Input
+            id="register-school"
+            label="Escola"
+            placeholder="Ex: Escola Estadual Educatech"
+            value={school}
+            onChange={(e) => setSchool(e.target.value)}
             required
           />
 
@@ -381,8 +387,29 @@ export const CadastroScreen: React.FC<ScreenProps> = ({
             />
           )}
 
-          <Button type="submit" variant="primary" className="w-full py-3 mt-4">
-            Cadastrar e Começar 🚀
+          {role === "teacher" && (
+            <Select
+              id="register-discipline"
+              label="Disciplina"
+              value={disciplineId}
+              onChange={(e) => setDisciplineId(e.target.value)}
+              options={[
+                { value: "", label: "Selecione uma disciplina" },
+                ...disciplines.map((discipline) => ({
+                  value: discipline.id,
+                  label: discipline.nome,
+                })),
+              ]}
+            />
+          )}
+
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full py-3 mt-4"
+            disabled={isLoading}
+          >
+            {isLoading ? "Cadastrando..." : "Cadastrar e Começar"}
           </Button>
         </form>
 
@@ -407,11 +434,11 @@ export const CadastroScreen: React.FC<ScreenProps> = ({
 // =========================================================
 export const FeedScreen: React.FC<ScreenProps> = ({
   posts,
-  setPosts,
   user,
   navigate,
   triggerToast,
   missions,
+  onToggleReaction,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("Todas");
@@ -426,19 +453,14 @@ export const FeedScreen: React.FC<ScreenProps> = ({
     "Redação",
   ];
 
-  const handleLike = (postId: string, e: React.MouseEvent) => {
+  const handleLike = async (postId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // prevent opening post details
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id === postId) {
-          const likedByMe = !p.likedByMe;
-          const likesCount = likedByMe ? p.likesCount + 1 : p.likesCount - 1;
-          return { ...p, likedByMe, likesCount };
-        }
-        return p;
-      }),
-    );
-    triggerToast("Interação registrada!");
+    try {
+      await onToggleReaction(postId);
+      triggerToast("Interação registrada!");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao registrar curtida.");
+    }
   };
 
   const filteredPosts = posts.filter((post) => {
@@ -754,65 +776,38 @@ export const FeedScreen: React.FC<ScreenProps> = ({
 // 4. CRIAR PUBLICAÇÃO (CREATE POST)
 // =========================================================
 export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
-  user,
-  setPosts,
   navigate,
   triggerToast,
-  setNotifications,
+  onCreatePost,
+  disciplines,
+  isLoading,
 }) => {
   const [title, setTitle] = useState("");
-  const [subject, setSubject] = useState("Matemática");
+  const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
   const [fileAttached, setFileAttached] = useState<{
     name: string;
     size: string;
   } | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const subjects = disciplines.map((discipline) => discipline.nome);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !content) {
       triggerToast("Preencha o título e o conteúdo da postagem.");
       return;
     }
 
-    const newPost: Post = {
-      id: `post-${Date.now()}`,
-      author: {
-        id: user.id,
-        name: user.name,
-        avatar: user.avatar,
-        role: user.role,
-        schoolClass: user.schoolClass,
-      },
-      title,
-      content,
-      subject,
-      likesCount: 0,
-      likedByMe: false,
-      createdAt: new Date().toISOString(),
-      attachments: fileAttached
-        ? [{ name: fileAttached.name, size: fileAttached.size, type: "pdf" }]
-        : [],
-      comments: [],
-    };
-
-    setPosts((prev) => [newPost, ...prev]);
-
-    // Send notification
-    setNotifications((prev) => [
-      {
-        id: `notif-${Date.now()}`,
-        title: "Publicação criada com sucesso! 📰",
-        content: `Você publicou "${title}" em ${subject}. Outros alunos já podem ver e interagir.`,
-        type: "system",
-        createdAt: new Date().toISOString(),
-        read: false,
-      },
-      ...prev,
-    ]);
-
-    triggerToast("Publicação enviada para o feed!");
-    navigate("feed");
+    try {
+      await onCreatePost({
+        title,
+        content,
+        subject: subject || subjects[0],
+      });
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao criar publicacao.");
+    }
   };
 
   return (
@@ -853,16 +848,9 @@ export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
           <Select
             id="post-subject"
             label="Selecione a Disciplina correspondente"
-            value={subject}
+            value={subject || subjects[0] || ""}
             onChange={(e) => setSubject(e.target.value)}
-            options={[
-              { value: "Matemática", label: "Matemática" },
-              { value: "Física", label: "Física" },
-              { value: "Química", label: "Química" },
-              { value: "Ciências", label: "Ciências" },
-              { value: "História", label: "História" },
-              { value: "Redação", label: "Redação" },
-            ]}
+            options={subjects.map((item) => ({ value: item, label: item }))}
           />
 
           <div className="flex flex-col gap-1.5">
@@ -898,8 +886,8 @@ export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
             >
               Cancelar
             </Button>
-            <Button type="submit" variant="primary">
-              Publicar no Feed
+            <Button type="submit" variant="primary" disabled={isLoading}>
+              {isLoading ? "Publicando..." : "Publicar no Feed"}
             </Button>
           </div>
         </form>
@@ -914,10 +902,11 @@ export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
 export const DetalhesPublicacaoScreen: React.FC<ScreenProps> = ({
   selectedPostId,
   posts,
-  setPosts,
   user,
   navigate,
   triggerToast,
+  onToggleReaction,
+  onCreateComment,
 }) => {
   const [commentText, setCommentText] = useState("");
 
@@ -940,48 +929,26 @@ export const DetalhesPublicacaoScreen: React.FC<ScreenProps> = ({
     );
   }
 
-  const handleLike = () => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id === post.id) {
-          const likedByMe = !p.likedByMe;
-          const likesCount = likedByMe ? p.likesCount + 1 : p.likesCount - 1;
-          return { ...p, likedByMe, likesCount };
-        }
-        return p;
-      }),
-    );
-    triggerToast("Interação registrada!");
+  const handleLike = async () => {
+    try {
+      await onToggleReaction(post.id);
+      triggerToast("Interação registrada!");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao registrar curtida.");
+    }
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
+  const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim()) return;
 
-    const newComment = {
-      id: `comment-${Date.now()}`,
-      authorId: user.id,
-      authorName: user.name,
-      authorAvatar: user.avatar,
-      authorRole: user.role,
-      content: commentText,
-      createdAt: new Date().toISOString(),
-    };
-
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id === post.id) {
-          return {
-            ...p,
-            comments: [...p.comments, newComment],
-          };
-        }
-        return p;
-      }),
-    );
-
-    setCommentText("");
-    triggerToast("Comentário publicado!");
+    try {
+      await onCreateComment(post.id, commentText);
+      setCommentText("");
+      triggerToast("Comentário publicado!");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao comentar.");
+    }
   };
 
   return (
@@ -1445,7 +1412,8 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
 
       {/* Mission Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredMissions.map((mission) => (
+        {filteredMissions.length > 0 ? (
+          filteredMissions.map((mission) => (
           <Card
             key={mission.id}
             onClick={() => navigate("detalhes-missao", mission.id)}
@@ -1507,7 +1475,18 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
               </Button>
             </div>
           </Card>
-        ))}
+          ))
+        ) : (
+          <div className="md:col-span-2 lg:col-span-3 text-center py-12 bg-white rounded-2xl border border-slate-100 space-y-2">
+            <Brain className="w-8 h-8 text-brand-text-sub mx-auto opacity-50" />
+            <h4 className="text-sm font-bold text-brand-text-main">
+              Nenhuma missão encontrada
+            </h4>
+            <p className="text-xs text-brand-text-sub">
+              As novas missões publicadas pelos professores aparecerão aqui.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1521,10 +1500,9 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
   missions,
   setMissions,
   user,
-  setUser,
   navigate,
   triggerToast,
-  setNotifications,
+  onSubmitMissionAnswer,
 }) => {
   const mission = missions.find((m) => m.id === selectedMissionId);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -1578,7 +1556,7 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
     setQuizFeedback(null);
   };
 
-  const handleSubmitQuiz = () => {
+  const handleSubmitQuiz = async () => {
     // Check answers
     let correctCount = 0;
     mission.questions.forEach((q) => {
@@ -1592,89 +1570,28 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
 
     const pass = correctCount === mission.questions.length;
     if (pass) {
-      setQuizFeedback("success");
+      if (user.role === "student") {
+        try {
+          await onSubmitMissionAnswer(
+            mission,
+            `Resposta enviada pela interface: ${mission.instructions}`,
+          );
+        } catch (error) {
+          triggerToast(error instanceof Error ? error.message : "Erro ao enviar resposta.");
+          return;
+        }
+      }
 
       // Update mission status
       setMissions((prev) =>
         prev.map((m) => {
           if (m.id === mission.id) {
-            return { ...m, status: "Concluída" };
+            return { ...m, status: "Em Andamento" };
           }
           return m;
         }),
       );
-
-      // Award XP and coins to user
-      const isFirstTime = mission.status !== "Concluída";
-      if (isFirstTime) {
-        const xpGained = mission.xpReward;
-        const coinsGained = mission.pointsReward;
-
-        let newXp = user.xp + xpGained;
-        let newLevel = user.level;
-        let leveledUp = false;
-
-        if (newXp >= user.xpNextLevel) {
-          newLevel += 1;
-          newXp = newXp - user.xpNextLevel;
-          leveledUp = true;
-        }
-
-        setUser((prev) => {
-          // Check if there is an unlocked badge
-          const currentBadges = [...prev.badges];
-          if (
-            mission.unlockedBadge &&
-            !currentBadges.some((b) => b.id === mission.unlockedBadge?.id)
-          ) {
-            currentBadges.push({
-              ...mission.unlockedBadge,
-              unlockedAt: new Date().toISOString(),
-            });
-          }
-
-          return {
-            ...prev,
-            xp: newXp,
-            level: newLevel,
-            points: prev.points + coinsGained,
-            completedMissionsCount: prev.completedMissionsCount + 1,
-            badges: currentBadges,
-          };
-        });
-
-        // Add Notification
-        setNotifications((prev) => [
-          {
-            id: `notif-complete-${Date.now()}`,
-            title: `Missão concluída! +${xpGained} XP 🌟`,
-            content: `Você completou com sucesso a missão "${mission.title}" e faturou ${coinsGained} moedas.`,
-            type: "badge",
-            createdAt: new Date().toISOString(),
-            read: false,
-          },
-          ...(leveledUp
-            ? [
-                {
-                  id: `notif-lvl-${Date.now()}`,
-                  title: `Subiu de Nível! Nível ${newLevel} 🎉`,
-                  content:
-                    "Incrível! Sua sede de conhecimento te levou a um novo patamar intelectual.",
-                  type: "system" as const,
-                  createdAt: new Date().toISOString(),
-                  read: false,
-                },
-              ]
-            : []),
-          ...prev,
-        ]);
-
-        triggerToast(
-          `Missão Concluída! +${xpGained} XP e +${coinsGained} Moedas!`,
-        );
-      } else {
-        triggerToast("Missão revisada com sucesso!");
-      }
+      setQuizFeedback("success");
     } else {
       setQuizFeedback("fail");
       triggerToast("Alguns exercícios precisam de correção.");
@@ -1857,11 +1774,11 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
 
                 <div className="space-y-2">
                   <h3 className="text-xl font-bold text-brand-text-main">
-                    Excelente Trabalho! 🎉
+                    Resposta enviada
                   </h3>
                   <p className="text-sm text-brand-text-sub max-w-md mx-auto">
-                    Você gabaritou a missão **"{mission.title}"** acertando{" "}
-                    {score} de {mission.questions.length} questões.
+                    Sua resposta para "{mission.title}" foi encaminhada para
+                    avaliação do professor.
                   </p>
                 </div>
 
@@ -1871,7 +1788,7 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
                       XP Conquistado
                     </span>
                     <span className="text-lg font-bold text-brand-primary">
-                      +{mission.xpReward} XP ⭐
+                      {mission.xpReward} XP
                     </span>
                   </div>
                   <div>
@@ -1879,7 +1796,7 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
                       Moedas Ganhas
                     </span>
                     <span className="text-lg font-bold text-amber-600">
-                      +{mission.pointsReward} Moedas 🪙
+                      {mission.pointsReward} pontos
                     </span>
                   </div>
                 </div>
@@ -2099,15 +2016,14 @@ export const RankingScreen: React.FC<ScreenProps> = ({ ranking, user }) => {
 export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   submissions,
   setSubmissions,
-  user,
-  navigate,
   triggerToast,
   setNotifications,
-  missions,
-  setMissions,
+  disciplines,
+  onCreateMission,
+  isLoading,
 }) => {
   const [newTitle, setNewTitle] = useState("");
-  const [newSubject, setNewSubject] = useState("Matemática");
+  const [newSubject, setNewSubject] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newDifficulty, setNewDifficulty] = useState<
     "Fácil" | "Médio" | "Difícil"
@@ -2142,54 +2058,24 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
     triggerToast("Submissão revisada e aprovada com sucesso!");
   };
 
-  const handleCreateMission = (e: React.FormEvent) => {
+  const subjects = disciplines.map((discipline) => discipline.nome);
+
+  const handleCreateMission = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle || !newDesc) return;
 
-    const newM: Mission = {
-      id: `mission-gen-${Date.now()}`,
-      title: newTitle,
-      description: newDesc,
-      subject: newSubject,
-      xpReward:
-        newDifficulty === "Fácil" ? 100 : newDifficulty === "Médio" ? 150 : 200,
-      pointsReward:
-        newDifficulty === "Fácil" ? 20 : newDifficulty === "Médio" ? 30 : 40,
-      difficulty: newDifficulty,
-      status: "Disponível",
-      instructions: "Siga os enunciados e responda com precisão Educatech.",
-      questions: [
-        {
-          id: `q-gen-1`,
-          question: "Qual é a resposta lógica para este desafio inicial?",
-          options: [
-            "Opção Correta do Professor",
-            "Opção Distratora 1",
-            "Opção Distratora 2",
-          ],
-          correctOptionIndex: 0,
-        },
-      ],
-    };
-
-    setMissions((prev) => [newM, ...prev]);
-
-    // Send generic notification to feed
-    setNotifications((prev) => [
-      {
-        id: `notif-miss-gen-${Date.now()}`,
-        title: `Nova Missão Disponibilizada! 🎯`,
-        content: `O Prof. Lucas Rocha publicou uma nova missão: "${newTitle}" em ${newSubject}. Participe!`,
-        type: "mission",
-        createdAt: new Date().toISOString(),
-        read: false,
-      },
-      ...prev,
-    ]);
-
-    setNewTitle("");
-    setNewDesc("");
-    triggerToast("Nova missão despachada para os estudantes!");
+    try {
+      await onCreateMission({
+        title: newTitle,
+        description: newDesc,
+        subject: newSubject || subjects[0],
+        difficulty: newDifficulty,
+      });
+      setNewTitle("");
+      setNewDesc("");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao criar missão.");
+    }
   };
 
   return (
@@ -2363,16 +2249,9 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
               <Select
                 id="teach-miss-subj"
                 label="Disciplina"
-                value={newSubject}
+                value={newSubject || subjects[0] || ""}
                 onChange={(e) => setNewSubject(e.target.value)}
-                options={[
-                  { value: "Matemática", label: "Matemática" },
-                  { value: "Física", label: "Física" },
-                  { value: "Química", label: "Química" },
-                  { value: "Ciências", label: "Ciências" },
-                  { value: "História", label: "História" },
-                  { value: "Redação", label: "Redação" },
-                ]}
+                options={subjects.map((item) => ({ value: item, label: item }))}
               />
 
               <Select
@@ -2409,8 +2288,9 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                 type="submit"
                 variant="primary"
                 className="w-full text-xs py-2 mt-2"
+                disabled={isLoading}
               >
-                Publicar Desafio 🎯
+                {isLoading ? "Publicando..." : "Publicar Desafio"}
               </Button>
             </form>
           </Card>
@@ -2425,28 +2305,28 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
 // =========================================================
 export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
   notifications,
-  setNotifications,
   triggerToast,
+  onMarkNotificationAsRead,
 }) => {
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    triggerToast("Todas as notificações foram marcadas como lidas.");
+  const markAllRead = async () => {
+    try {
+      await Promise.all(
+        notifications
+          .filter((notification) => !notification.read)
+          .map((notification) => onMarkNotificationAsRead(notification.id)),
+      );
+      triggerToast("Todas as notificações foram marcadas como lidas.");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao atualizar notificações.");
+    }
   };
 
-  const clearRead = () => {
-    setNotifications((prev) => prev.filter((n) => !n.read));
-    triggerToast("Notificações lidas removidas.");
-  };
-
-  const toggleRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => {
-        if (n.id === id) {
-          return { ...n, read: !n.read };
-        }
-        return n;
-      }),
-    );
+  const markRead = async (id: string) => {
+    try {
+      await onMarkNotificationAsRead(id);
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao atualizar notificação.");
+    }
   };
 
   return (
@@ -2471,14 +2351,6 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
             onClick={markAllRead}
           >
             Marcar como lidas
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs"
-            onClick={clearRead}
-          >
-            Limpar lidas
           </Button>
         </div>
       </div>
@@ -2506,7 +2378,7 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
             return (
               <div
                 key={notif.id}
-                onClick={() => toggleRead(notif.id)}
+                onClick={() => !notif.read && void markRead(notif.id)}
                 className={`flex gap-4 p-5 transition-colors cursor-pointer select-none ${
                   notif.read
                     ? "bg-white opacity-70"
@@ -2545,11 +2417,13 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleRead(notif.id);
+                        if (!notif.read) {
+                          void markRead(notif.id);
+                        }
                       }}
                       className="text-[10px] font-bold text-brand-text-sub hover:text-brand-text-main hover:underline transition-colors ml-auto"
                     >
-                      {notif.read ? "Marcar como não lida" : "Marcar como lida"}
+                      {notif.read ? "Lida" : "Marcar como lida"}
                     </button>
                   </div>
                 </div>

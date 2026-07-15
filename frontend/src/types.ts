@@ -56,11 +56,18 @@ export interface Post {
   likedByMe: boolean;
   comments: PostComment[];
   createdAt: string;
+  status?: 'PENDENTE' | 'APROVADA' | 'REPROVADA';
   attachments?: {
     name: string;
     size: string;
     type: string;
   }[];
+}
+
+export interface Discipline {
+  id: string;
+  nome: string;
+  descricao: string | null;
 }
 
 export interface ExerciseQuestion {
