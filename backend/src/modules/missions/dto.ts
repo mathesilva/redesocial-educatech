@@ -2,22 +2,26 @@ import type { DificuldadeMissao, PerfilUsuario, StatusRespostaMissao } from "@pr
 import { z } from "zod";
 
 import {
+  atualizarMissaoSchema,
   avaliarRespostaMissaoParamsSchema,
   avaliarRespostaMissaoSchema,
   buscarMissaoPorIdSchema,
   buscarRespostaMissaoParamsSchema,
   criarMissaoSchema,
   criarRespostaMissaoSchema,
+  listarMinhasMissoesSchema,
   listarMissoesSchema,
 } from "./schemas.js";
 
 export type CriarMissaoDto = z.infer<typeof criarMissaoSchema>;
 export type ListarMissoesDto = z.infer<typeof listarMissoesSchema>;
+export type ListarMinhasMissoesDto = z.infer<typeof listarMinhasMissoesSchema>;
 export type BuscarMissaoPorIdDto = z.infer<typeof buscarMissaoPorIdSchema>;
 export type BuscarRespostaMissaoParamsDto = z.infer<typeof buscarRespostaMissaoParamsSchema>;
 export type CriarRespostaMissaoDto = z.infer<typeof criarRespostaMissaoSchema>;
 export type AvaliarRespostaMissaoParamsDto = z.infer<typeof avaliarRespostaMissaoParamsSchema>;
 export type AvaliarRespostaMissaoDto = z.infer<typeof avaliarRespostaMissaoSchema>;
+export type AtualizarMissaoDto = z.infer<typeof atualizarMissaoSchema>;
 
 export interface UsuarioMissaoDto {
   id: string;
@@ -37,6 +41,11 @@ export interface CriarMissaoRepositoryDto {
   disciplinaId: string;
 }
 
+export interface IniciarRespostaMissaoRepositoryDto {
+  alunoId: string;
+  missaoId: string;
+}
+
 export interface CriarRespostaMissaoRepositoryDto {
   resposta: string;
   imagemUrl?: string | null;
@@ -44,9 +53,24 @@ export interface CriarRespostaMissaoRepositoryDto {
   missaoId: string;
 }
 
+export interface EnviarRespostaMissaoRepositoryDto {
+  resposta: string;
+  imagemUrl?: string | null;
+}
+
 export interface AvaliarRespostaMissaoRepositoryDto {
   nota: number;
   feedbackProfessor?: string | null;
+}
+
+export interface AtualizarMissaoRepositoryDto {
+  titulo?: string;
+  descricao?: string;
+  criteriosAvaliacao?: string | null;
+  prazo?: Date;
+  pontuacao?: number;
+  dificuldade?: DificuldadeMissao;
+  disciplinaId?: string;
 }
 
 export interface ProfessorMissaoRespostaDto {
@@ -86,28 +110,43 @@ export interface ListarMissoesRespostaDto {
 }
 
 export interface RespostaMissaoRespostaDto {
-  resposta: string;
+  resposta: string | null;
   status: StatusRespostaMissao;
   nota: number | null;
   feedbackProfessor: string | null;
-  dataEnvio: Date;
+  dataInicio: Date;
+  dataEnvio: Date | null;
 }
 
 export interface AlunoRespostaMissaoDto {
   id: string;
   nomeCompleto: string;
   email: string;
+  turma: string | null;
 }
 
 export interface RespostaMissaoProfessorRespostaDto {
   id: string;
-  resposta: string;
+  resposta: string | null;
   imagemUrl: string | null;
   aluno: AlunoRespostaMissaoDto;
   status: StatusRespostaMissao;
   nota: number | null;
   feedbackProfessor: string | null;
-  dataEnvio: Date;
+  dataInicio: Date;
+  dataEnvio: Date | null;
+}
+
+export interface MissaoComContagemRespostaDto extends MissaoRespostaDto {
+  ativa: boolean;
+  quantidadeIniciados: number;
+  quantidadeRespostasRecebidas: number;
+  quantidadeConcluidas: number;
+}
+
+export interface ListarMinhasMissoesRespostaDto {
+  itens: MissaoComContagemRespostaDto[];
+  paginacao: PaginacaoDto;
 }
 
 export type MissionsDto = CriarMissaoDto;

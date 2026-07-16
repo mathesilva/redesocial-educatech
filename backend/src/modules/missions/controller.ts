@@ -3,12 +3,14 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { respostaSucesso } from "../../shared/http/index.js";
 import type { UsuarioMissaoDto } from "./dto.js";
 import {
+  atualizarMissaoSchema,
   avaliarRespostaMissaoParamsSchema,
   avaliarRespostaMissaoSchema,
   buscarMissaoPorIdSchema,
   buscarRespostaMissaoParamsSchema,
   criarMissaoSchema,
   criarRespostaMissaoSchema,
+  listarMinhasMissoesSchema,
   listarMissoesSchema,
 } from "./schemas.js";
 import { MissionsService } from "./service.js";
@@ -36,6 +38,39 @@ export class MissionsController {
     const missao = await this.service.buscarPorId(id);
 
     return reply.status(200).send(respostaSucesso("Missao encontrada.", missao));
+  };
+
+  public listarMinhas = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const filtros = listarMinhasMissoesSchema.parse(request.query);
+    const usuario = request.usuarioAutenticado as UsuarioMissaoDto;
+    const resultado = await this.service.listarMinhas(usuario, filtros);
+
+    return reply.status(200).send(respostaSucesso("Meus desafios encontrados.", resultado));
+  };
+
+  public atualizar = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const { id } = buscarMissaoPorIdSchema.parse(request.params);
+    const dados = atualizarMissaoSchema.parse(request.body);
+    const usuario = request.usuarioAutenticado as UsuarioMissaoDto;
+    const missao = await this.service.atualizar(id, dados, usuario);
+
+    return reply.status(200).send(respostaSucesso("Missao atualizada.", missao));
+  };
+
+  public excluir = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const { id } = buscarMissaoPorIdSchema.parse(request.params);
+    const usuario = request.usuarioAutenticado as UsuarioMissaoDto;
+    await this.service.excluir(id, usuario);
+
+    return reply.status(200).send(respostaSucesso("Missao excluida.", null));
+  };
+
+  public iniciar = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const { missaoId } = buscarRespostaMissaoParamsSchema.parse(request.params);
+    const usuario = request.usuarioAutenticado as UsuarioMissaoDto;
+    const resposta = await this.service.iniciar(missaoId, usuario);
+
+    return reply.status(201).send(respostaSucesso("Missao iniciada.", resposta));
   };
 
   public responder = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {

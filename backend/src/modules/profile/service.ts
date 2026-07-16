@@ -1,6 +1,8 @@
 import { NotFoundError } from "../../shared/errors/index.js";
 import type {
+  EstatisticasPerfilDto,
   GamificacaoPerfilDto,
+  PerfilPublicoRespostaDto,
   PerfilRespostaDto,
   PublicacaoPerfilDto,
   UsuarioAutenticadoPerfilDto,
@@ -18,6 +20,37 @@ export class ProfileService {
       throw new NotFoundError("Usuario nao encontrado.");
     }
 
+    const dadosComuns = await this.montarDadosComuns(
+      usuario.id,
+      this.repository.listarPublicacoesRecentes(usuario.id),
+    );
+
+    return { usuario, ...dadosComuns };
+  }
+
+  public async buscarPerfilPublico(id: string): Promise<PerfilPublicoRespostaDto> {
+    const usuario = await this.repository.buscarUsuarioPublicoPorId(id);
+
+    if (!usuario) {
+      throw new NotFoundError("Usuario nao encontrado.");
+    }
+
+    const dadosComuns = await this.montarDadosComuns(
+      usuario.id,
+      this.repository.listarPublicacoesPublicasRecentes(usuario.id),
+    );
+
+    return { usuario, ...dadosComuns };
+  }
+
+  private async montarDadosComuns(
+    usuarioId: string,
+    publicacoesPromise: Promise<PublicacaoPerfil[]>,
+  ): Promise<{
+    gamificacao: GamificacaoPerfilDto;
+    estatisticas: EstatisticasPerfilDto;
+    publicacoes: PublicacaoPerfilDto[];
+  }> {
     const [
       respostasAvaliadas,
       quantidadePublicacoes,
@@ -29,18 +62,17 @@ export class ProfileService {
       publicacoesRecentes,
     ] = await Promise.all([
       this.repository.listarRespostasAvaliadas(),
-      this.repository.contarPublicacoes(usuario.id),
-      this.repository.contarComentarios(usuario.id),
-      this.repository.somarCurtidasRecebidas(usuario.id),
-      this.repository.contarMissoesRespondidas(usuario.id),
-      this.repository.contarMissoesAvaliadas(usuario.id),
-      this.repository.calcularMediaNotas(usuario.id),
-      this.repository.listarPublicacoesRecentes(usuario.id),
+      this.repository.contarPublicacoes(usuarioId),
+      this.repository.contarComentarios(usuarioId),
+      this.repository.somarCurtidasRecebidas(usuarioId),
+      this.repository.contarMissoesRespondidas(usuarioId),
+      this.repository.contarMissoesAvaliadas(usuarioId),
+      this.repository.calcularMediaNotas(usuarioId),
+      publicacoesPromise,
     ]);
 
     return {
-      usuario,
-      gamificacao: this.calcularGamificacao(usuario.id, respostasAvaliadas),
+      gamificacao: this.calcularGamificacao(usuarioId, respostasAvaliadas),
       estatisticas: {
         quantidadePublicacoes,
         quantidadeComentarios,

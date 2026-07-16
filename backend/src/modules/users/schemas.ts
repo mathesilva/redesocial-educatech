@@ -76,6 +76,24 @@ export const cadastrarUsuarioSchema = z
     }
   });
 
+export const buscarUsuariosSchema = z
+  .object({
+    busca: z.string().trim().min(1, "Informe um termo de busca.").optional(),
+    pagina: z.coerce
+      .number()
+      .int("Pagina deve ser um numero inteiro.")
+      .min(1, "Pagina deve ser maior ou igual a 1.")
+      .default(1),
+    limite: z.coerce
+      .number()
+      .int("Limite deve ser um numero inteiro.")
+      .min(1, "Limite deve ser maior ou igual a 1.")
+      .max(50, "Limite deve ser no maximo 50.")
+      .default(20),
+  })
+  .strict();
+
 export const usersSchemas = {
   cadastrarUsuario: cadastrarUsuarioSchema,
+  buscarUsuarios: buscarUsuariosSchema,
 };

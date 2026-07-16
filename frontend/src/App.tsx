@@ -17,6 +17,7 @@ import {
   Menu,
   X,
   LogOut,
+  Search,
 } from "lucide-react";
 
 // Import Types
@@ -24,6 +25,7 @@ import {
   UserProfile,
   Post,
   Mission,
+  MyMission,
   NotificationItem,
   RankingEntry,
   MissionSubmission,
@@ -31,11 +33,7 @@ import {
 } from "./types";
 
 // Import Mock Data
-import {
-  INITIAL_USER,
-  INITIAL_RANKING,
-  INITIAL_SUBMISSIONS,
-} from "./data";
+import { INITIAL_USER, INITIAL_SUBMISSIONS } from "./data";
 
 import { authApi } from "./api/auth";
 import {
@@ -50,17 +48,23 @@ import { missionsApi } from "./api/missions";
 import { notificationsApi } from "./api/notifications";
 import { postsApi } from "./api/posts";
 import { profileApi } from "./api/profile";
+import { rankingApi } from "./api/ranking";
 import { reactionsApi } from "./api/reactions";
 import { usersApi } from "./api/users";
 import {
   mapApiDifficulty,
   mapApiRole,
   mapComment,
+  mapDifficulty,
   mapMission,
+  mapMyMission,
   mapNotification,
   mapPost,
   mapProfileToUser,
+  mapPublicProfile,
+  mapRanking,
   mapRole,
+  mapUserSearchResult,
 } from "./services/mappers";
 
 // Import Reusable Design System components
@@ -79,6 +83,8 @@ import {
   RankingScreen,
   DashboardProfessorScreen,
   CentralNotificacoesScreen,
+  BuscarPerfisScreen,
+  PerfilPublicoScreen,
 } from "./components/Pages";
 
 export default function App() {
@@ -88,9 +94,10 @@ export default function App() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
-  const [ranking, setRanking] = useState<RankingEntry[]>(INITIAL_RANKING);
+  const [ranking, setRanking] = useState<RankingEntry[]>([]);
   const [submissions, setSubmissions] =
     useState<MissionSubmission[]>(INITIAL_SUBMISSIONS);
+  const [myMissions, setMyMissions] = useState<MyMission[]>([]);
 
   // Routing and Navigation States
   const [currentScreen, setCurrentScreen] = useState<string>(
@@ -100,6 +107,9 @@ export default function App() {
   const [selectedMissionId, setSelectedMissionId] = useState<string | null>(
     null,
   );
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<
+    string | null
+  >(null);
 
   // UI States
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -179,6 +189,12 @@ export default function App() {
         return {
           ...mappedMission,
           status: answer.status === "AVALIADA" ? "Concluída" : "Em Andamento",
+          myAnswer: {
+            resposta: answer.resposta,
+            status: answer.status,
+            nota: answer.nota,
+            feedbackProfessor: answer.feedbackProfessor,
+          },
         } as Mission;
       }),
     );
@@ -198,8 +214,11 @@ export default function App() {
           studentName: answer.aluno.nomeCompleto,
           studentAvatar: INITIAL_USER.avatar,
           missionTitle: mission.title,
+          subject: mission.subject,
+          turma: answer.aluno.turma,
+          answer: answer.resposta ?? "",
           score: answer.nota === null ? "Pendente" : `${answer.nota}%`,
-          submittedAt: answer.dataEnvio,
+          submittedAt: answer.dataEnvio ?? answer.dataInicio,
           xpAwarded: answer.nota ?? 0,
           status: answer.status === "AVALIADA" ? "Aprovado" : "Pendente",
         }));
@@ -209,9 +228,19 @@ export default function App() {
     setSubmissions(answers.flat());
   };
 
+  const loadMyMissions = async () => {
+    const response = await missionsApi.listMine();
+    setMyMissions(response.itens.map(mapMyMission));
+  };
+
   const loadNotifications = async () => {
     const items = await notificationsApi.list();
     setNotifications(items.map(mapNotification));
+  };
+
+  const loadRanking = async (userId: string) => {
+    const items = await rankingApi.list();
+    setRanking(mapRanking(items, userId));
   };
 
   const loadAuthenticatedData = async () => {
@@ -223,10 +252,11 @@ export default function App() {
       loadPosts(),
       loadMissions(mapRole(me.perfil)),
       loadNotifications(),
+      loadRanking(me.id),
     ]);
 
     if (me.perfil === "PROFESSOR") {
-      await loadMissionSubmissions(missionItems);
+      await Promise.all([loadMissionSubmissions(missionItems), loadMyMissions()]);
     }
 
     setIsAuthenticated(true);
@@ -272,11 +302,26 @@ export default function App() {
       return;
     }
 
+    if (screenName === "professor" && user.role !== "teacher") {
+      return;
+    }
+
     if (screenName === "detalhes-publicacao" && extraId) {
       setSelectedPostId(extraId);
     } else if (screenName === "detalhes-missao" && extraId) {
       setSelectedMissionId(extraId);
+    } else if (screenName === "perfil-publico" && extraId) {
+      setSelectedProfileUserId(extraId);
     }
+
+    // Recarrega dados que podem ter mudado desde o login (ex: novo desafio
+    // publicado por um professor gera notificacao para os alunos).
+    if (screenName === "notificacoes") {
+      void loadNotifications().catch(() => undefined);
+    } else if (screenName === "missoes") {
+      void loadMissions().catch(() => undefined);
+    }
+
     setCurrentScreen(screenName);
     setMobileMenuOpen(false);
   };
@@ -287,6 +332,7 @@ export default function App() {
     setPosts([]);
     setMissions([]);
     setNotifications([]);
+    setRanking([]);
     triggerToast("Desconectado com sucesso!");
     setCurrentScreen("login");
   };
@@ -297,6 +343,7 @@ export default function App() {
       setPosts([]);
       setMissions([]);
       setNotifications([]);
+      setRanking([]);
       setCurrentScreen("login");
       setGlobalError("Sessao expirada. Faça login novamente.");
     });
@@ -433,11 +480,42 @@ export default function App() {
     triggerToast("Nova missão publicada para os estudantes!");
   };
 
-  const handleSubmitMissionAnswer = async (mission: Mission, answer: string) => {
-    await missionsApi.answer(mission.id, { resposta: answer });
+  const handleStartMission = async (mission: Mission) => {
+    const resposta = await missionsApi.start(mission.id);
     setMissions((prev) =>
       prev.map((item) =>
-        item.id === mission.id ? { ...item, status: "Em Andamento" } : item,
+        item.id === mission.id
+          ? {
+              ...item,
+              status: resposta.status === "AVALIADA" ? "Concluída" : "Em Andamento",
+              myAnswer: {
+                resposta: resposta.resposta,
+                status: resposta.status,
+                nota: resposta.nota,
+                feedbackProfessor: resposta.feedbackProfessor,
+              },
+            }
+          : item,
+      ),
+    );
+  };
+
+  const handleSubmitMissionAnswer = async (mission: Mission, answer: string) => {
+    const resposta = await missionsApi.answer(mission.id, { resposta: answer });
+    setMissions((prev) =>
+      prev.map((item) =>
+        item.id === mission.id
+          ? {
+              ...item,
+              status: resposta.status === "AVALIADA" ? "Concluída" : "Em Andamento",
+              myAnswer: {
+                resposta: resposta.resposta,
+                status: resposta.status,
+                nota: resposta.nota,
+                feedbackProfessor: resposta.feedbackProfessor,
+              },
+            }
+          : item,
       ),
     );
     triggerToast("Resposta enviada para avaliação do professor.");
@@ -461,7 +539,71 @@ export default function App() {
       ),
     );
 
+    setMyMissions((prev) =>
+      prev.map((item) =>
+        item.id === submission.missionId
+          ? { ...item, completedCount: item.completedCount + 1 }
+          : item,
+      ),
+    );
+
     triggerToast("Submissão avaliada com sucesso!");
+  };
+
+  const handleUpdateMission = async (
+    missionId: string,
+    data: {
+      title: string;
+      description: string;
+      subject: string;
+      difficulty: Mission["difficulty"];
+      deadline: string;
+      xpReward: number;
+    },
+  ) => {
+    const disciplineId = findDisciplineId(data.subject);
+    if (!disciplineId) {
+      throw new Error("Nenhuma disciplina cadastrada no backend.");
+    }
+
+    const updated = await missionsApi.update(missionId, {
+      titulo: data.title,
+      descricao: data.description,
+      dificuldade: mapApiDifficulty(data.difficulty),
+      disciplinaId: disciplineId,
+      prazo: data.deadline,
+      pontuacao: data.xpReward,
+    });
+
+    setMyMissions((prev) =>
+      prev.map((item) =>
+        item.id === missionId
+          ? {
+              ...item,
+              title: updated.titulo,
+              description: updated.descricao,
+              subject: updated.disciplina.nome,
+              difficulty: mapDifficulty(updated.dificuldade),
+              xpReward: updated.pontuacao,
+              pointsReward: updated.pontuacao,
+              deadline: updated.prazo,
+              active: new Date(updated.prazo) > new Date(),
+            }
+          : item,
+      ),
+    );
+    setMissions((prev) =>
+      prev.map((item) => (item.id === missionId ? mapMission(updated) : item)),
+    );
+
+    triggerToast("Desafio atualizado com sucesso!");
+  };
+
+  const handleDeleteMission = async (missionId: string) => {
+    await missionsApi.remove(missionId);
+    setMyMissions((prev) => prev.filter((item) => item.id !== missionId));
+    setMissions((prev) => prev.filter((item) => item.id !== missionId));
+    triggerToast("Desafio excluído com sucesso!");
   };
 
   const handleMarkNotificationAsRead = async (id: string) => {
@@ -471,6 +613,16 @@ export default function App() {
         notification.id === id ? mapNotification(updated) : notification,
       ),
     );
+  };
+
+  const handleSearchUsers = async (termo: string) => {
+    const response = await usersApi.search(termo);
+    return response.itens.map(mapUserSearchResult);
+  };
+
+  const handleLoadPublicProfile = async (id: string) => {
+    const perfil = await profileApi.getPublic(id);
+    return mapPublicProfile(perfil);
   };
 
   // Notifications Count
@@ -501,6 +653,10 @@ export default function App() {
         return "Docência > Painel do Professor";
       case "notificacoes":
         return "Central > Notificações";
+      case "buscar-perfis":
+        return "Comunidade > Buscar Perfis";
+      case "perfil-publico":
+        return "Comunidade > Perfil do Usuário";
       default:
         return "Educatech";
     }
@@ -520,9 +676,11 @@ export default function App() {
       setRanking,
       submissions,
       setSubmissions,
+      myMissions,
       navigate,
       selectedPostId,
       selectedMissionId,
+      selectedProfileUserId,
       triggerToast,
       disciplines,
       isLoading: Boolean(loadingMessage),
@@ -533,9 +691,14 @@ export default function App() {
       onToggleReaction: handleToggleReaction,
       onCreateComment: handleCreateComment,
       onCreateMission: handleCreateMission,
+      onStartMission: handleStartMission,
       onSubmitMissionAnswer: handleSubmitMissionAnswer,
       onApproveMissionSubmission: handleApproveMissionSubmission,
+      onUpdateMission: handleUpdateMission,
+      onDeleteMission: handleDeleteMission,
       onMarkNotificationAsRead: handleMarkNotificationAsRead,
+      onSearchUsers: handleSearchUsers,
+      onLoadPublicProfile: handleLoadPublicProfile,
     };
 
     switch (currentScreen) {
@@ -558,9 +721,17 @@ export default function App() {
       case "ranking":
         return <RankingScreen {...props} />;
       case "professor":
-        return <DashboardProfessorScreen {...props} />;
+        return user.role === "teacher" ? (
+          <DashboardProfessorScreen {...props} />
+        ) : (
+          <FeedScreen {...props} />
+        );
       case "notificacoes":
         return <CentralNotificacoesScreen {...props} />;
+      case "buscar-perfis":
+        return <BuscarPerfisScreen {...props} />;
+      case "perfil-publico":
+        return <PerfilPublicoScreen {...props} />;
       default:
         return <FeedScreen {...props} />;
     }
@@ -742,6 +913,19 @@ export default function App() {
                   <span>Meu Perfil</span>
                 </button>
 
+                <button
+                  onClick={() => navigate("buscar-perfis")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    currentScreen === "buscar-perfis" ||
+                    currentScreen === "perfil-publico"
+                      ? "bg-blue-50/50 text-brand-primary"
+                      : "text-brand-text-sub hover:bg-slate-50 hover:text-brand-text-main"
+                  }`}
+                >
+                  <Search className="w-4 h-4" />
+                  <span>Buscar Perfis</span>
+                </button>
+
                 {user.role === "teacher" && (
                   <button
                     onClick={() => navigate("professor")}
@@ -882,16 +1066,31 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => navigate("professor")}
+                    onClick={() => navigate("buscar-perfis")}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
-                      currentScreen === "professor"
-                        ? "bg-amber-50 text-amber-700"
+                      currentScreen === "buscar-perfis" ||
+                      currentScreen === "perfil-publico"
+                        ? "bg-blue-50/50 text-brand-primary"
                         : "text-brand-text-sub"
                     }`}
                   >
-                    <Users className="w-4 h-4 text-amber-500" />
-                    <span>Painel do Professor</span>
+                    <Search className="w-4 h-4" />
+                    <span>Buscar Perfis</span>
                   </button>
+
+                  {user.role === "teacher" && (
+                    <button
+                      onClick={() => navigate("professor")}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
+                        currentScreen === "professor"
+                          ? "bg-amber-50 text-amber-700"
+                          : "text-brand-text-sub"
+                      }`}
+                    >
+                      <Users className="w-4 h-4 text-amber-500" />
+                      <span>Painel do Professor</span>
+                    </button>
+                  )}
                 </nav>
               </div>
 
@@ -967,17 +1166,19 @@ export default function App() {
             <span className="text-[10px]">Ranking</span>
           </button>
 
-          <button
-            onClick={() => navigate("professor")}
-            className={`flex flex-col items-center gap-0.5 text-xs font-semibold cursor-pointer ${
-              currentScreen === "professor"
-                ? "text-amber-500"
-                : "text-brand-text-sub"
-            }`}
-          >
-            <Users className="w-5 h-5" />
-            <span className="text-[10px]">Docente</span>
-          </button>
+          {user.role === "teacher" && (
+            <button
+              onClick={() => navigate("professor")}
+              className={`flex flex-col items-center gap-0.5 text-xs font-semibold cursor-pointer ${
+                currentScreen === "professor"
+                  ? "text-amber-500"
+                  : "text-brand-text-sub"
+              }`}
+            >
+              <Users className="w-5 h-5" />
+              <span className="text-[10px]">Docente</span>
+            </button>
+          )}
 
           <button
             onClick={() => navigate("perfil")}

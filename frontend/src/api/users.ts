@@ -1,5 +1,10 @@
-import { apiRequest } from "./client";
-import type { RegisterUserRequest, UserResponseDto } from "../types/api";
+import { apiRequest, buildQueryString } from "./client";
+import type {
+  PaginatedResponse,
+  RegisterUserRequest,
+  UserResponseDto,
+  UserSearchResultDto,
+} from "../types/api";
 
 export const usersApi = {
   register: (body: RegisterUserRequest) =>
@@ -8,4 +13,8 @@ export const usersApi = {
       body,
       authenticated: false,
     }),
+  search: (termo: string, limite = 50) =>
+    apiRequest<PaginatedResponse<UserSearchResultDto>>(
+      `/api/usuarios${buildQueryString({ busca: termo, pagina: 1, limite })}`,
+    ),
 };

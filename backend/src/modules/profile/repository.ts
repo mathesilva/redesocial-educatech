@@ -11,6 +11,21 @@ const usuarioPerfilSelect = {
   turma: true,
 } satisfies Prisma.UsuarioSelect;
 
+const usuarioPerfilPublicoSelect = {
+  id: true,
+  nomeCompleto: true,
+  fotoPerfil: true,
+  perfil: true,
+  turma: true,
+  dataCriacao: true,
+  disciplina: {
+    select: {
+      id: true,
+      nome: true,
+    },
+  },
+} satisfies Prisma.UsuarioSelect;
+
 const publicacaoPerfilSelect = {
   id: true,
   titulo: true,
@@ -36,6 +51,10 @@ export type UsuarioPerfil = Prisma.UsuarioGetPayload<{
   select: typeof usuarioPerfilSelect;
 }>;
 
+export type UsuarioPerfilPublico = Prisma.UsuarioGetPayload<{
+  select: typeof usuarioPerfilPublicoSelect;
+}>;
+
 export type PublicacaoPerfil = Prisma.PublicacaoGetPayload<{
   select: typeof publicacaoPerfilSelect;
 }>;
@@ -51,6 +70,13 @@ export class ProfileRepository {
     return this.prisma.usuario.findUnique({
       where: { id },
       select: usuarioPerfilSelect,
+    });
+  }
+
+  public async buscarUsuarioPublicoPorId(id: string): Promise<UsuarioPerfilPublico | null> {
+    return this.prisma.usuario.findUnique({
+      where: { id },
+      select: usuarioPerfilPublicoSelect,
     });
   }
 
@@ -118,6 +144,17 @@ export class ProfileRepository {
   public async listarPublicacoesRecentes(usuarioId: string): Promise<PublicacaoPerfil[]> {
     return this.prisma.publicacao.findMany({
       where: { usuarioId },
+      select: publicacaoPerfilSelect,
+      orderBy: {
+        dataCriacao: "desc",
+      },
+      take: 5,
+    });
+  }
+
+  public async listarPublicacoesPublicasRecentes(usuarioId: string): Promise<PublicacaoPerfil[]> {
+    return this.prisma.publicacao.findMany({
+      where: { usuarioId, status: "APROVADA" },
       select: publicacaoPerfilSelect,
       orderBy: {
         dataCriacao: "desc",
