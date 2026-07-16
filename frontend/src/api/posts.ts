@@ -12,4 +12,8 @@ export const postsApi = {
       method: "POST",
       body,
     }),
+  remove: (id: string) =>
+    apiRequest<null>(`/api/publicacoes/${id}`, {
+      method: "DELETE",
+    }),
 };

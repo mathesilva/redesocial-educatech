@@ -1,4 +1,4 @@
-import type { Disciplina, Prisma } from "@prisma/client";
+import type { Disciplina, Prisma, TipoNotificacao } from "@prisma/client";
 
 import { prisma } from "../../shared/prisma/index.js";
 import type { CriarPublicacaoRepositoryDto, ListarPublicacoesDto } from "./dto.js";
@@ -61,6 +61,28 @@ export class PostsRepository {
   public async buscarDisciplinaPorId(id: string): Promise<Disciplina | null> {
     return this.prisma.disciplina.findUnique({
       where: { id },
+    });
+  }
+
+  public async excluirComNotificacao(
+    id: string,
+    notificacao?: {
+      usuarioId: string;
+      titulo: string;
+      mensagem: string;
+      tipo: TipoNotificacao;
+    },
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      // Comentarios e reacoes nao possuem cascade no schema; removidos antes
+      // da publicacao para respeitar as restricoes de chave estrangeira.
+      await tx.reacao.deleteMany({ where: { publicacaoId: id } });
+      await tx.comentario.deleteMany({ where: { publicacaoId: id } });
+      await tx.publicacao.delete({ where: { id } });
+
+      if (notificacao) {
+        await tx.notificacao.create({ data: notificacao });
+      }
     });
   }
 

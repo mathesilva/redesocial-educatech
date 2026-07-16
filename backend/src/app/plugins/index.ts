@@ -7,7 +7,7 @@ import { env } from "../../config/env.js";
 export function registerPlugins(app: FastifyInstance): void {
   void app.register(fastifyCors, {
     origin: true,
-    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type"],
   });
 

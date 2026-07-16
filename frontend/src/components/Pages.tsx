@@ -109,6 +109,7 @@ interface ScreenProps {
   }) => Promise<void>;
   onToggleReaction: (postId: string) => Promise<void>;
   onCreateComment: (postId: string, content: string) => Promise<void>;
+  onDeletePost: (postId: string) => Promise<void>;
   onCreateMission: (data: {
     title: string;
     description: string;
@@ -118,6 +119,7 @@ interface ScreenProps {
   onStartMission: (mission: Mission) => Promise<void>;
   onSubmitMissionAnswer: (mission: Mission, answer: string) => Promise<void>;
   onApproveMissionSubmission: (submission: MissionSubmission) => Promise<void>;
+  onRejectMissionSubmission: (submission: MissionSubmission) => Promise<void>;
   onUpdateMission: (
     missionId: string,
     data: {
@@ -470,9 +472,29 @@ export const FeedScreen: React.FC<ScreenProps> = ({
   missions,
   disciplines,
   onToggleReaction,
+  onDeletePost,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("Todas");
+  const [postToDelete, setPostToDelete] = useState<Post | null>(null);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const isTeacher = user.role === "teacher";
+
+  const handleConfirmDeletePost = async () => {
+    if (!postToDelete) return;
+    setIsDeletingPost(true);
+    try {
+      await onDeletePost(postToDelete.id);
+      triggerToast("Publicação removida.");
+      setPostToDelete(null);
+    } catch (error) {
+      triggerToast(
+        error instanceof Error ? error.message : "Erro ao remover publicação.",
+      );
+    } finally {
+      setIsDeletingPost(false);
+    }
+  };
 
   const subjects = ["Todas", ...disciplines.map((discipline) => discipline.nome)];
 
@@ -590,7 +612,21 @@ export const FeedScreen: React.FC<ScreenProps> = ({
                       </span>
                     </div>
                   </div>
-                  <Tag subject={post.subject} />
+                  <div className="flex items-center gap-2">
+                    <Tag subject={post.subject} />
+                    {isTeacher && (
+                      <button
+                        title="Remover publicação"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPostToDelete(post);
+                        }}
+                        className="p-1.5 rounded-lg text-brand-text-sub hover:text-brand-danger hover:bg-red-50 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Content */}
@@ -792,6 +828,41 @@ export const FeedScreen: React.FC<ScreenProps> = ({
           </div>
         </Card>
       </div>
+
+      {/* Modal: Remover publicação (moderação do professor) */}
+      <Modal
+        isOpen={postToDelete !== null}
+        onClose={() => setPostToDelete(null)}
+        title="Remover Publicação"
+      >
+        {postToDelete && (
+          <div className="space-y-4">
+            <p className="text-sm text-brand-text-sub">
+              Tem certeza que deseja remover a publicação{" "}
+              <strong className="text-brand-text-main">
+                "{postToDelete.title}"
+              </strong>
+              ? O autor será notificado e essa ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setPostToDelete(null)}
+                disabled={isDeletingPost}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void handleConfirmDeletePost()}
+                disabled={isDeletingPost}
+              >
+                {isDeletingPost ? "Removendo..." : "Remover Publicação"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
@@ -931,8 +1002,12 @@ export const DetalhesPublicacaoScreen: React.FC<ScreenProps> = ({
   triggerToast,
   onToggleReaction,
   onCreateComment,
+  onDeletePost,
 }) => {
   const [commentText, setCommentText] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const isTeacher = user.role === "teacher";
 
   const post = posts.find((p) => p.id === selectedPostId);
 
@@ -972,6 +1047,22 @@ export const DetalhesPublicacaoScreen: React.FC<ScreenProps> = ({
       triggerToast("Comentário publicado!");
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Erro ao comentar.");
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    setIsDeletingPost(true);
+    try {
+      await onDeletePost(post.id);
+      triggerToast("Publicação removida.");
+      setShowDeleteModal(false);
+      navigate("feed");
+    } catch (error) {
+      triggerToast(
+        error instanceof Error ? error.message : "Erro ao remover publicação.",
+      );
+    } finally {
+      setIsDeletingPost(false);
     }
   };
 
@@ -1018,7 +1109,18 @@ export const DetalhesPublicacaoScreen: React.FC<ScreenProps> = ({
               </span>
             </div>
           </div>
-          <Tag subject={post.subject} />
+          <div className="flex items-center gap-2">
+            <Tag subject={post.subject} />
+            {isTeacher && (
+              <button
+                title="Remover publicação"
+                onClick={() => setShowDeleteModal(true)}
+                className="p-1.5 rounded-lg text-brand-text-sub hover:text-brand-danger hover:bg-red-50 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -1165,6 +1267,37 @@ export const DetalhesPublicacaoScreen: React.FC<ScreenProps> = ({
           </div>
         </form>
       </Card>
+
+      {/* Modal: Remover publicação (moderação do professor) */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Remover Publicação"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-brand-text-sub">
+            Tem certeza que deseja remover a publicação{" "}
+            <strong className="text-brand-text-main">"{post.title}"</strong>? O
+            autor será notificado e essa ação não pode ser desfeita.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteModal(false)}
+              disabled={isDeletingPost}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void handleConfirmDelete()}
+              disabled={isDeletingPost}
+            >
+              {isDeletingPost ? "Removendo..." : "Remover Publicação"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -1367,6 +1500,7 @@ export const PerfilAlunoScreen: React.FC<ScreenProps> = ({
 // 7. LISTA DE MISSÕES
 // =========================================================
 export const ListaMissoesScreen: React.FC<ScreenProps> = ({
+  user,
   missions,
   navigate,
   onStartMission,
@@ -1375,6 +1509,7 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
   const [filterStatus, setFilterStatus] = useState<MissionFilterStatus>("All");
   const [filterDifficulty, setFilterDifficulty] = useState<string>("All");
   const [startingMissionId, setStartingMissionId] = useState<string | null>(null);
+  const isTeacher = user.role === "teacher";
 
   const handleMissionButtonClick = async (
     e: React.MouseEvent,
@@ -1514,20 +1649,26 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
                 </div>
               </div>
 
-              <Button
-                variant={mission.status === "Concluída" ? "outline" : "primary"}
-                className="w-full text-xs py-2"
-                disabled={startingMissionId === mission.id}
-                onClick={(e) => void handleMissionButtonClick(e, mission)}
-              >
-                {startingMissionId === mission.id
-                  ? "Iniciando..."
-                  : mission.status === "Concluída"
-                    ? "Rever Exercícios"
-                    : mission.status === "Em Andamento"
-                      ? "Continuar Missão"
-                      : "Iniciar Missão"}
-              </Button>
+              {isTeacher ? (
+                <div className="w-full text-center text-[11px] font-semibold text-brand-text-sub bg-slate-50 border border-slate-100 rounded-lg py-2">
+                  Visualização do professor
+                </div>
+              ) : (
+                <Button
+                  variant={mission.status === "Concluída" ? "outline" : "primary"}
+                  className="w-full text-xs py-2"
+                  disabled={startingMissionId === mission.id}
+                  onClick={(e) => void handleMissionButtonClick(e, mission)}
+                >
+                  {startingMissionId === mission.id
+                    ? "Iniciando..."
+                    : mission.status === "Concluída"
+                      ? "Rever Exercícios"
+                      : mission.status === "Em Andamento"
+                        ? "Continuar Missão"
+                        : "Iniciar Missão"}
+                </Button>
+              )}
             </div>
           </Card>
           ))
@@ -2019,6 +2160,7 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   disciplines,
   onCreateMission,
   onApproveMissionSubmission,
+  onRejectMissionSubmission,
   onUpdateMission,
   onDeleteMission,
   isLoading,
@@ -2040,6 +2182,7 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   const submissionsSectionRef = useRef<HTMLDivElement>(null);
 
   // Modais de Meus Desafios
+  const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [viewingMission, setViewingMission] = useState<MyMission | null>(null);
   const [editingMission, setEditingMission] = useState<MyMission | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -2062,11 +2205,27 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   const [myMissionPage, setMyMissionPage] = useState(1);
   const MY_MISSIONS_PAGE_SIZE = 5;
 
+  const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
+
   const handleApprove = async (submission: MissionSubmission) => {
+    setEvaluatingId(submission.id);
     try {
       await onApproveMissionSubmission(submission);
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Erro ao avaliar submissão.");
+    } finally {
+      setEvaluatingId(null);
+    }
+  };
+
+  const handleReject = async (submission: MissionSubmission) => {
+    setEvaluatingId(submission.id);
+    try {
+      await onRejectMissionSubmission(submission);
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao reprovar submissão.");
+    } finally {
+      setEvaluatingId(null);
     }
   };
 
@@ -2085,6 +2244,7 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
       });
       setNewTitle("");
       setNewDesc("");
+      setIsDispatchModalOpen(false);
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Erro ao criar missão.");
     }
@@ -2245,14 +2405,23 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   return (
     <div className="space-y-8">
       {/* Title */}
-      <div className="border-b border-slate-100 pb-5">
-        <h2 className="text-2xl font-bold text-brand-text-main tracking-tight">
-          Console de Gestão do Docente
-        </h2>
-        <p className="text-sm text-brand-text-sub mt-0.5">
-          Monitore o engajamento dos alunos, lance missões personalizadas e
-          aprove submissões de relatórios.
-        </p>
+      <div className="border-b border-slate-100 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-brand-text-main tracking-tight">
+            Console de Gestão do Docente
+          </h2>
+          <p className="text-sm text-brand-text-sub mt-0.5">
+            Monitore o engajamento dos alunos, lance missões personalizadas e
+            aprove submissões de relatórios.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          onClick={() => setIsDispatchModalOpen(true)}
+          className="shrink-0 flex items-center gap-2 text-sm"
+        >
+          <Plus className="w-4 h-4" /> Despachar Novo Desafio
+        </Button>
       </div>
 
       {/* High Level Metrics Cards */}
@@ -2314,11 +2483,9 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
         </Card>
       </div>
 
-      {/* Content Grid: Submissions list (Col 8) & Create Mission Form (Col 4) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Pending Submissions Box */}
-        <div className="col-span-1 lg:col-span-8" ref={submissionsSectionRef}>
-          <Card className="p-0 overflow-hidden">
+      {/* Pending Submissions Box */}
+      <div ref={submissionsSectionRef}>
+        <Card className="p-0 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50/50 flex justify-between items-center">
               <h3 className="text-sm font-bold text-brand-text-main">
                 Revisão de Exercícios Práticos
@@ -2387,7 +2554,8 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                 >
                   <option value="Todos">Todos os Status</option>
                   <option value="Pendente">Aguardando Correção</option>
-                  <option value="Aprovado">Corrigido</option>
+                  <option value="Aprovado">Aprovado</option>
+                  <option value="Reprovado">Reprovado</option>
                 </select>
 
                 <select
@@ -2447,7 +2615,11 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                       <td className="px-6 py-3.5">
                         <Badge
                           variant={
-                            sub.score.includes("100%") ? "success" : "primary"
+                            sub.status === "Reprovado"
+                              ? "danger"
+                              : sub.score.includes("100%")
+                                ? "success"
+                                : "primary"
                           }
                         >
                           {sub.score}
@@ -2458,14 +2630,30 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                       </td>
                       <td className="px-6 py-3.5 text-right">
                         {sub.status === "Pendente" ? (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => void handleApprove(sub)}
-                            className="px-3 py-1 rounded-lg text-[10px]"
-                          >
-                            Aprovar
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              disabled={evaluatingId === sub.id}
+                              onClick={() => void handleApprove(sub)}
+                              className="px-3 py-1 rounded-lg text-[10px]"
+                            >
+                              Aprovar
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              disabled={evaluatingId === sub.id}
+                              onClick={() => void handleReject(sub)}
+                              className="px-3 py-1 rounded-lg text-[10px]"
+                            >
+                              Reprovar
+                            </Button>
+                          </div>
+                        ) : sub.status === "Reprovado" ? (
+                          <span className="text-[10px] text-brand-danger font-semibold flex items-center justify-end gap-1">
+                            <XCircle className="w-3.5 h-3.5" /> Reprovado
+                          </span>
                         ) : (
                           <span className="text-[10px] text-brand-success font-semibold flex items-center justify-end gap-1">
                             <Check className="w-3.5 h-3.5" /> Aprovado
@@ -2490,83 +2678,90 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
               </table>
             </div>
           </Card>
-        </div>
-
-        {/* Dispatch New Mission Form */}
-        <div className="col-span-1 lg:col-span-4">
-          <Card className="p-6 space-y-4">
-            <div className="border-b border-slate-50 pb-3">
-              <h3 className="text-sm font-bold text-brand-text-main">
-                Despachar Novo Desafio
-              </h3>
-              <p className="text-[10px] text-brand-text-sub mt-0.5">
-                Sua missão será enviada imediatamente para todos os estudantes
-                do Ensino Médio.
-              </p>
-            </div>
-
-            <form onSubmit={handleCreateMission} className="space-y-3.5">
-              <Input
-                id="teach-miss-title"
-                label="Título do Desafio"
-                placeholder="Ex: Teorema de Pitágoras no Cotidiano"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                required
-              />
-
-              <Select
-                id="teach-miss-subj"
-                label="Disciplina"
-                value={newSubject || subjects[0] || ""}
-                onChange={(e) => setNewSubject(e.target.value)}
-                options={subjects.map((item) => ({ value: item, label: item }))}
-              />
-
-              <Select
-                id="teach-miss-diff"
-                label="Dificuldade Estimada"
-                value={newDifficulty}
-                onChange={(e) =>
-                  setNewDifficulty(e.target.value as MissionDifficultyLabel)
-                }
-                options={[
-                  { value: "Fácil", label: "Fácil" },
-                  { value: "Médio", label: "Médio" },
-                  { value: "Difícil", label: "Difícil" },
-                ]}
-              />
-
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="teach-miss-desc"
-                  className="text-xs font-semibold text-brand-text-main"
-                >
-                  Instruções / Enunciado
-                </label>
-                <textarea
-                  id="teach-miss-desc"
-                  rows={3}
-                  placeholder="Escreva o enunciado inicial do quiz..."
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full text-xs font-sans text-brand-text-main placeholder-slate-400 bg-white border border-slate-200 rounded-xl px-3 py-2 transition-all focus:outline-none focus:ring-1 focus:ring-blue-100"
-                  required
-                />
-              </div>
-
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full text-xs py-2 mt-2"
-                disabled={isLoading}
-              >
-                {isLoading ? "Publicando..." : "Publicar Desafio"}
-              </Button>
-            </form>
-          </Card>
-        </div>
       </div>
+
+      {/* Modal: Despachar Novo Desafio */}
+      <Modal
+        isOpen={isDispatchModalOpen}
+        onClose={() => setIsDispatchModalOpen(false)}
+        title="Despachar Novo Desafio"
+      >
+        <p className="text-xs text-brand-text-sub -mt-1 mb-4">
+          Sua missão será enviada imediatamente para todos os estudantes do
+          Ensino Médio.
+        </p>
+
+        <form onSubmit={handleCreateMission} className="space-y-3.5">
+          <Input
+            id="teach-miss-title"
+            label="Título do Desafio"
+            placeholder="Ex: Teorema de Pitágoras no Cotidiano"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            required
+          />
+
+          <Select
+            id="teach-miss-subj"
+            label="Disciplina"
+            value={newSubject || subjects[0] || ""}
+            onChange={(e) => setNewSubject(e.target.value)}
+            options={subjects.map((item) => ({ value: item, label: item }))}
+          />
+
+          <Select
+            id="teach-miss-diff"
+            label="Dificuldade Estimada"
+            value={newDifficulty}
+            onChange={(e) =>
+              setNewDifficulty(e.target.value as MissionDifficultyLabel)
+            }
+            options={[
+              { value: "Fácil", label: "Fácil" },
+              { value: "Médio", label: "Médio" },
+              { value: "Difícil", label: "Difícil" },
+            ]}
+          />
+
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="teach-miss-desc"
+              className="text-xs font-semibold text-brand-text-main"
+            >
+              Instruções / Enunciado
+            </label>
+            <textarea
+              id="teach-miss-desc"
+              rows={3}
+              placeholder="Escreva o enunciado inicial do quiz..."
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              className="w-full text-xs font-sans text-brand-text-main placeholder-slate-400 bg-white border border-slate-200 rounded-xl px-3 py-2 transition-all focus:outline-none focus:ring-1 focus:ring-blue-100"
+              required
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDispatchModalOpen(false)}
+              className="text-xs py-2"
+              disabled={isLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              className="text-xs py-2"
+              disabled={isLoading}
+            >
+              {isLoading ? "Publicando..." : "Publicar Desafio"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Meus Desafios */}
       <Card className="p-0 overflow-hidden">

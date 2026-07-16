@@ -161,7 +161,7 @@ export interface MissionSubmission {
   score: string; // e.g., "5/5"
   submittedAt: string;
   xpAwarded: number;
-  status: 'Aprovado' | 'Pendente';
+  status: 'Aprovado' | 'Reprovado' | 'Pendente';
 }
 
 export interface MyMission {

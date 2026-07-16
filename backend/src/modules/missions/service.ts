@@ -326,7 +326,7 @@ export class MissionsService {
     dados: AvaliarRespostaMissaoDto,
     usuario: UsuarioMissaoDto,
   ): Promise<RespostaMissaoRespostaDto> {
-    await this.validarProfessorResponsavel(missaoId, usuario);
+    const missao = await this.validarProfessorResponsavel(missaoId, usuario);
 
     const resposta = await this.repository.buscarRespostaPorId(respostaId);
 
@@ -342,10 +342,27 @@ export class MissionsService {
       throw new ConflictError("Aluno ainda nao enviou a resposta desta missao.");
     }
 
-    const respostaAvaliada = await this.repository.avaliarResposta(respostaId, {
-      nota: dados.nota,
-      feedbackProfessor: dados.feedbackProfessor ?? null,
-    });
+    // Reprovacao corresponde a nota 0 (aluno nao pontua). Nesse caso o aluno
+    // recebe uma notificacao informando que a resposta foi reprovada.
+    const reprovada = dados.nota === 0;
+    const notificacao = reprovada
+      ? {
+          usuarioId: resposta.alunoId,
+          missaoId,
+          titulo: "Resposta reprovada",
+          mensagem: `Sua resposta para o desafio "${missao.titulo}" foi reprovada pelo professor. Acesse a missao para ver o feedback.`,
+          tipo: "AVALIACAO" as const,
+        }
+      : undefined;
+
+    const respostaAvaliada = await this.repository.avaliarResposta(
+      respostaId,
+      {
+        nota: dados.nota,
+        feedbackProfessor: dados.feedbackProfessor ?? null,
+      },
+      notificacao,
+    );
 
     return this.mapearRespostaMissao(respostaAvaliada);
   }

@@ -220,7 +220,14 @@ export default function App() {
           score: answer.nota === null ? "Pendente" : `${answer.nota}%`,
           submittedAt: answer.dataEnvio ?? answer.dataInicio,
           xpAwarded: answer.nota ?? 0,
-          status: answer.status === "AVALIADA" ? "Aprovado" : "Pendente",
+          // Aprovar concede nota 100; reprovar concede nota 0. Uma resposta
+          // avaliada com nota 0 e considerada reprovada (aluno nao pontua).
+          status:
+            answer.status === "AVALIADA"
+              ? answer.nota && answer.nota > 0
+                ? "Aprovado"
+                : "Reprovado"
+              : "Pendente",
         }));
       }),
     );
@@ -426,6 +433,11 @@ export default function App() {
     navigate("feed");
   };
 
+  const handleDeletePost = async (postId: string) => {
+    await postsApi.remove(postId);
+    setPosts((prev) => prev.filter((post) => post.id !== postId));
+  };
+
   const handleToggleReaction = async (postId: string) => {
     const summary = await reactionsApi.toggle(postId);
     setPosts((prev) =>
@@ -548,6 +560,36 @@ export default function App() {
     );
 
     triggerToast("Submissão avaliada com sucesso!");
+  };
+
+  const handleRejectMissionSubmission = async (submission: MissionSubmission) => {
+    if (!submission.missionId) {
+      throw new Error("Resposta de missão sem identificador.");
+    }
+
+    // Reprovar avalia a resposta com nota 0: o aluno nao recebe nenhum ponto.
+    await missionsApi.evaluateAnswer(submission.missionId, submission.id, {
+      nota: 0,
+      feedbackProfessor: "Resposta reprovada.",
+    });
+
+    setSubmissions((prev) =>
+      prev.map((item) =>
+        item.id === submission.id
+          ? { ...item, status: "Reprovado", score: "0%", xpAwarded: 0 }
+          : item,
+      ),
+    );
+
+    setMyMissions((prev) =>
+      prev.map((item) =>
+        item.id === submission.missionId
+          ? { ...item, completedCount: item.completedCount + 1 }
+          : item,
+      ),
+    );
+
+    triggerToast("Submissão reprovada. O aluno não recebeu pontos.");
   };
 
   const handleUpdateMission = async (
@@ -688,12 +730,14 @@ export default function App() {
       onLogin: handleLogin,
       onRegister: handleRegister,
       onCreatePost: handleCreatePost,
+      onDeletePost: handleDeletePost,
       onToggleReaction: handleToggleReaction,
       onCreateComment: handleCreateComment,
       onCreateMission: handleCreateMission,
       onStartMission: handleStartMission,
       onSubmitMissionAnswer: handleSubmitMissionAnswer,
       onApproveMissionSubmission: handleApproveMissionSubmission,
+      onRejectMissionSubmission: handleRejectMissionSubmission,
       onUpdateMission: handleUpdateMission,
       onDeleteMission: handleDeleteMission,
       onMarkNotificationAsRead: handleMarkNotificationAsRead,

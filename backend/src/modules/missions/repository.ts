@@ -3,6 +3,7 @@ import type {
   Prisma,
   RespostaMissao,
   StatusRespostaMissao,
+  TipoNotificacao,
   Usuario,
 } from "@prisma/client";
 
@@ -153,14 +154,29 @@ export class MissionsRepository {
   public async avaliarResposta(
     id: string,
     dados: AvaliarRespostaMissaoRepositoryDto,
+    notificacao?: {
+      usuarioId: string;
+      missaoId: string;
+      titulo: string;
+      mensagem: string;
+      tipo: TipoNotificacao;
+    },
   ): Promise<RespostaMissao> {
-    return this.prisma.respostaMissao.update({
-      where: { id },
-      data: {
-        nota: dados.nota,
-        feedbackProfessor: dados.feedbackProfessor ?? null,
-        status: "AVALIADA",
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const respostaAvaliada = await tx.respostaMissao.update({
+        where: { id },
+        data: {
+          nota: dados.nota,
+          feedbackProfessor: dados.feedbackProfessor ?? null,
+          status: "AVALIADA",
+        },
+      });
+
+      if (notificacao) {
+        await tx.notificacao.create({ data: notificacao });
+      }
+
+      return respostaAvaliada;
     });
   }
 

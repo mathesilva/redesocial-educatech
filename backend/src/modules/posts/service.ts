@@ -1,4 +1,4 @@
-import { NotFoundError } from "../../shared/errors/index.js";
+import { ForbiddenError, NotFoundError } from "../../shared/errors/index.js";
 import type {
   CriarPublicacaoDto,
   ListarPublicacoesDto,
@@ -59,6 +59,31 @@ export class PostsService {
     }
 
     return this.mapearPublicacao(publicacao);
+  }
+
+  public async excluir(id: string, usuario: UsuarioPublicacaoDto): Promise<void> {
+    if (usuario.perfil !== "PROFESSOR") {
+      throw new ForbiddenError("Somente professores podem moderar publicacoes.");
+    }
+
+    const publicacao = await this.repository.buscarPorId(id);
+
+    if (!publicacao) {
+      throw new NotFoundError("Publicacao nao encontrada.");
+    }
+
+    // Notifica o autor, exceto quando o proprio professor remove sua publicacao.
+    const notificarAutor = publicacao.usuario.id !== usuario.id;
+    const notificacao = notificarAutor
+      ? {
+          usuarioId: publicacao.usuario.id,
+          titulo: "Publicação removida",
+          mensagem: `Sua publicação "${publicacao.titulo}" foi removida por um professor por não estar de acordo com as diretrizes da comunidade.`,
+          tipo: "PUBLICACAO_REPROVADA" as const,
+        }
+      : undefined;
+
+    await this.repository.excluirComNotificacao(id, notificacao);
   }
 
   private mapearPublicacao(publicacao: PublicacaoComRelacoes): PublicacaoRespostaDto {

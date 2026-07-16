@@ -33,4 +33,12 @@ export class PostsController {
 
     return reply.status(200).send(respostaSucesso("Publicacao encontrada.", publicacao));
   };
+
+  public excluir = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const { id } = buscarPublicacaoPorIdSchema.parse(request.params);
+    const usuario = request.usuarioAutenticado as UsuarioPublicacaoDto;
+    await this.service.excluir(id, usuario);
+
+    return reply.status(200).send(respostaSucesso("Publicacao excluida.", null));
+  };
 }
