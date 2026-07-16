@@ -6,7 +6,9 @@ import type {
   MissionAnswerDto,
   MissionAnswerForTeacherDto,
   MissionDto,
+  MyMissionDto,
   PaginatedResponse,
+  UpdateMissionRequest,
 } from "../types/api";
 
 export const missionsApi = {
@@ -18,6 +20,10 @@ export const missionsApi = {
     apiRequest<MissionDto>("/api/missoes", {
       method: "POST",
       body,
+    }),
+  start: (missionId: string) =>
+    apiRequest<MissionAnswerDto>(`/api/missoes/${missionId}/iniciar`, {
+      method: "POST",
     }),
   answer: (missionId: string, body: CreateMissionAnswerRequest) =>
     apiRequest<MissionAnswerDto>(`/api/missoes/${missionId}/respostas`, {
@@ -40,4 +46,17 @@ export const missionsApi = {
         body,
       },
     ),
+  listMine: () =>
+    apiRequest<PaginatedResponse<MyMissionDto>>(
+      `/api/missoes/minhas${buildQueryString({ pagina: 1, limite: 50 })}`,
+    ),
+  update: (missionId: string, body: UpdateMissionRequest) =>
+    apiRequest<MissionDto>(`/api/missoes/${missionId}`, {
+      method: "PATCH",
+      body,
+    }),
+  remove: (missionId: string) =>
+    apiRequest<null>(`/api/missoes/${missionId}`, {
+      method: "DELETE",
+    }),
 };

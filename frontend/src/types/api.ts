@@ -181,11 +181,12 @@ export interface CreateMissionAnswerRequest {
 }
 
 export interface MissionAnswerDto {
-  resposta: string;
-  status: "ENVIADA" | "AVALIADA";
+  resposta: string | null;
+  status: "INICIADA" | "ENVIADA" | "AVALIADA";
   nota: number | null;
   feedbackProfessor: string | null;
-  dataEnvio: string;
+  dataInicio: string;
+  dataEnvio: string | null;
 }
 
 export interface MissionAnswerForTeacherDto extends MissionAnswerDto {
@@ -195,6 +196,7 @@ export interface MissionAnswerForTeacherDto extends MissionAnswerDto {
     id: string;
     nomeCompleto: string;
     email: string;
+    turma: string | null;
   };
 }
 
@@ -203,11 +205,88 @@ export interface EvaluateMissionAnswerRequest {
   feedbackProfessor?: string;
 }
 
+export interface UpdateMissionRequest {
+  titulo?: string;
+  descricao?: string;
+  criteriosAvaliacao?: string;
+  prazo?: string;
+  pontuacao?: number;
+  dificuldade?: ApiMissionDifficulty;
+  disciplinaId?: string;
+}
+
+export interface MyMissionDto extends MissionDto {
+  ativa: boolean;
+  quantidadeIniciados: number;
+  quantidadeRespostasRecebidas: number;
+  quantidadeConcluidas: number;
+}
+
+export interface UserSearchResultDto {
+  id: string;
+  nomeCompleto: string;
+  fotoPerfil: string | null;
+  perfil: ApiRole;
+  turma: string | null;
+  disciplina: DisciplineDto | null;
+  pontuacao: number;
+  nivel: number;
+}
+
+export interface PublicProfilePostDto {
+  id: string;
+  titulo: string;
+  descricao: string;
+  imagemUrl: string | null;
+  status: ApiPostStatus;
+  quantidadeComentarios: number;
+  quantidadeCurtidas: number;
+  dataCriacao: string;
+}
+
+export interface PublicProfileResponseDto {
+  usuario: {
+    id: string;
+    nomeCompleto: string;
+    fotoPerfil: string | null;
+    perfil: ApiRole;
+    turma: string | null;
+    disciplina: DisciplineDto | null;
+    dataCriacao: string;
+  };
+  gamificacao: {
+    pontuacao: number;
+    nivel: number;
+    posicaoRankingGeral: number;
+  };
+  estatisticas: {
+    quantidadePublicacoes: number;
+    quantidadeComentarios: number;
+    quantidadeCurtidasRecebidas: number;
+    quantidadeMissoesRespondidas: number;
+    quantidadeMissoesAvaliadas: number;
+    mediaNotas: number | null;
+  };
+  publicacoes: PublicProfilePostDto[];
+}
+
+export interface RankingResponseDto {
+  posicao: number;
+  aluno: {
+    id: string;
+    nomeCompleto: string;
+    email: string;
+  };
+  pontuacao: number;
+  nivel: number;
+}
+
 export interface NotificationDto {
   id: string;
   titulo: string;
   mensagem: string;
   tipo: ApiNotificationType;
   lida: boolean;
+  missaoId: string | null;
   dataCriacao: string;
 }

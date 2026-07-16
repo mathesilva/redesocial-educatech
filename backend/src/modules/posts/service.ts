@@ -1,4 +1,4 @@
-import { ForbiddenError, NotFoundError } from "../../shared/errors/index.js";
+import { NotFoundError } from "../../shared/errors/index.js";
 import type {
   CriarPublicacaoDto,
   ListarPublicacoesDto,
@@ -16,10 +16,6 @@ export class PostsService {
     dados: CriarPublicacaoDto,
     usuario: UsuarioPublicacaoDto,
   ): Promise<PublicacaoRespostaDto> {
-    if (usuario.perfil !== "ALUNO") {
-      throw new ForbiddenError("Somente alunos podem criar publicacoes.");
-    }
-
     const disciplina = await this.repository.buscarDisciplinaPorId(dados.disciplinaId);
 
     if (!disciplina) {
@@ -30,7 +26,7 @@ export class PostsService {
       titulo: dados.titulo,
       descricao: dados.descricao,
       imagemUrl: dados.imagemUrl ?? null,
-      status: "PENDENTE",
+      status: "APROVADA",
       usuarioId: usuario.id,
       disciplinaId: dados.disciplinaId,
     });

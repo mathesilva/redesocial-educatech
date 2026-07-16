@@ -37,6 +37,7 @@ enum DificuldadeMissao {
 }
 
 enum StatusRespostaMissao {
+  INICIADA
   ENVIADA
   AVALIADA
 
@@ -171,6 +172,7 @@ model Missao {
   professor       Usuario          @relation(fields: [professorId], references: [id])
   disciplina      Disciplina       @relation(fields: [disciplinaId], references: [id])
   respostasMissao RespostaMissao[]
+  notificacoes    Notificacao[]
 
   @@index([professorId])
   @@index([disciplinaId])
@@ -180,12 +182,13 @@ model Missao {
 
 model RespostaMissao {
   id                String               @id @default(uuid()) @db.Uuid
-  resposta          String
+  resposta          String?
   imagemUrl         String?              @map("imagem_url")
-  status            StatusRespostaMissao @default(ENVIADA)
+  status            StatusRespostaMissao @default(INICIADA)
   nota              Float?
   feedbackProfessor String?              @map("feedback_professor")
-  dataEnvio         DateTime             @default(now()) @map("data_envio")
+  dataInicio        DateTime             @default(now()) @map("data_inicio")
+  dataEnvio         DateTime?            @map("data_envio")
   dataAtualizacao   DateTime             @updatedAt @map("data_atualizacao")
   alunoId           String               @map("aluno_id") @db.Uuid
   missaoId          String               @map("missao_id") @db.Uuid
@@ -203,6 +206,7 @@ model RespostaMissao {
 model Notificacao {
   id          String          @id @default(uuid()) @db.Uuid
   usuarioId   String          @map("usuario_id") @db.Uuid
+  missaoId    String?         @map("missao_id") @db.Uuid
   titulo      String
   mensagem    String
   tipo        TipoNotificacao
@@ -210,8 +214,10 @@ model Notificacao {
   dataCriacao DateTime        @default(now()) @map("data_criacao")
 
   usuario Usuario @relation(fields: [usuarioId], references: [id])
+  missao  Missao? @relation(fields: [missaoId], references: [id], onDelete: SetNull)
 
   @@index([usuarioId])
   @@index([dataCriacao])
+  @@index([missaoId])
   @@map("notificacoes")
 }

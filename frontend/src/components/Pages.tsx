@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   Search,
@@ -30,8 +30,13 @@ import {
   TrendingUp,
   ExternalLink,
   ChevronRight,
+  ChevronLeft,
   Send,
   AlertCircle,
+  Eye,
+  Pencil,
+  Filter,
+  XCircle,
 } from "lucide-react";
 import {
   Button,
@@ -45,15 +50,19 @@ import {
   Alert,
   BadgeIconResolver,
   Pagination,
+  Modal,
 } from "./DesignSystem";
 import {
   UserProfile,
   Post,
   Mission,
+  MyMission,
   NotificationItem,
   RankingEntry,
   MissionSubmission,
   Discipline,
+  PublicProfile,
+  PublicProfileSummary,
 } from "../types";
 
 // =========================================================
@@ -72,10 +81,12 @@ interface ScreenProps {
   setRanking: React.Dispatch<React.SetStateAction<RankingEntry[]>>;
   submissions: MissionSubmission[];
   setSubmissions: React.Dispatch<React.SetStateAction<MissionSubmission[]>>;
+  myMissions: MyMission[];
 
   navigate: (screen: string, extraId?: string) => void;
   selectedPostId?: string | null;
   selectedMissionId?: string | null;
+  selectedProfileUserId?: string | null;
   triggerToast: (msg: string) => void;
   disciplines: Discipline[];
   isLoading: boolean;
@@ -104,9 +115,24 @@ interface ScreenProps {
     subject: string;
     difficulty: Mission["difficulty"];
   }) => Promise<void>;
+  onStartMission: (mission: Mission) => Promise<void>;
   onSubmitMissionAnswer: (mission: Mission, answer: string) => Promise<void>;
   onApproveMissionSubmission: (submission: MissionSubmission) => Promise<void>;
+  onUpdateMission: (
+    missionId: string,
+    data: {
+      title: string;
+      description: string;
+      subject: string;
+      difficulty: Mission["difficulty"];
+      deadline: string;
+      xpReward: number;
+    },
+  ) => Promise<void>;
+  onDeleteMission: (missionId: string) => Promise<void>;
   onMarkNotificationAsRead: (id: string) => Promise<void>;
+  onSearchUsers: (termo: string) => Promise<PublicProfileSummary[]>;
+  onLoadPublicProfile: (id: string) => Promise<PublicProfile>;
 }
 
 type MissionFilterStatus = "All" | "Disponível" | "Em Andamento" | "Concluída";
@@ -442,20 +468,13 @@ export const FeedScreen: React.FC<ScreenProps> = ({
   navigate,
   triggerToast,
   missions,
+  disciplines,
   onToggleReaction,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("Todas");
 
-  const subjects = [
-    "Todas",
-    "Matemática",
-    "Física",
-    "Química",
-    "Ciências",
-    "História",
-    "Redação",
-  ];
+  const subjects = ["Todas", ...disciplines.map((discipline) => discipline.nome)];
 
   const handleLike = async (postId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // prevent opening post details
@@ -517,22 +536,22 @@ export const FeedScreen: React.FC<ScreenProps> = ({
           </div>
         </div>
 
-        {user.role === "student" && (
-          <div
-            onClick={() => navigate("criar-publicacao")}
-            className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md/5 transition-all p-4 cursor-pointer flex items-center justify-between group"
-          >
-            <div className="flex items-center gap-3">
-              <Avatar src={user.avatar} alt={user.name} role={user.role} />
-              <span className="text-sm font-medium text-brand-text-sub group-hover:text-brand-text-main transition-colors">
-                Compartilhe um resumo ou poste uma dúvida...
-              </span>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-blue-50 text-brand-primary flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Plus className="w-4 h-4" />
-            </div>
+        <div
+          onClick={() => navigate("criar-publicacao")}
+          className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md/5 transition-all p-4 cursor-pointer flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3">
+            <Avatar src={user.avatar} alt={user.name} role={user.role} />
+            <span className="text-sm font-medium text-brand-text-sub group-hover:text-brand-text-main transition-colors">
+              {user.role === "teacher"
+                ? "Compartilhe um material ou aviso para a turma..."
+                : "Compartilhe um resumo ou poste uma dúvida..."}
+            </span>
           </div>
-        )}
+          <div className="w-8 h-8 rounded-full bg-blue-50 text-brand-primary flex items-center justify-center group-hover:scale-105 transition-transform">
+            <Plus className="w-4 h-4" />
+          </div>
+        </div>
 
         {/* Post List */}
         <div className="space-y-4">
@@ -781,7 +800,6 @@ export const FeedScreen: React.FC<ScreenProps> = ({
 // 4. CRIAR PUBLICAÇÃO (CREATE POST)
 // =========================================================
 export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
-  user,
   navigate,
   triggerToast,
   onCreatePost,
@@ -800,12 +818,6 @@ export const CriarPublicacaoScreen: React.FC<ScreenProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (user.role !== "student") {
-      triggerToast("Somente alunos podem criar publicações.");
-      navigate("feed");
-      return;
-    }
-
     if (!title || !content) {
       triggerToast("Preencha o título e o conteúdo da postagem.");
       return;
@@ -1357,9 +1369,36 @@ export const PerfilAlunoScreen: React.FC<ScreenProps> = ({
 export const ListaMissoesScreen: React.FC<ScreenProps> = ({
   missions,
   navigate,
+  onStartMission,
+  triggerToast,
 }) => {
   const [filterStatus, setFilterStatus] = useState<MissionFilterStatus>("All");
   const [filterDifficulty, setFilterDifficulty] = useState<string>("All");
+  const [startingMissionId, setStartingMissionId] = useState<string | null>(null);
+
+  const handleMissionButtonClick = async (
+    e: React.MouseEvent,
+    mission: Mission,
+  ) => {
+    e.stopPropagation();
+
+    if (mission.status !== "Disponível") {
+      navigate("detalhes-missao", mission.id);
+      return;
+    }
+
+    setStartingMissionId(mission.id);
+    try {
+      await onStartMission(mission);
+      navigate("detalhes-missao", mission.id);
+    } catch (error) {
+      triggerToast(
+        error instanceof Error ? error.message : "Erro ao iniciar missão.",
+      );
+    } finally {
+      setStartingMissionId(null);
+    }
+  };
 
   const filteredMissions = missions.filter((m) => {
     const matchesStatus = filterStatus === "All" || m.status === filterStatus;
@@ -1478,10 +1517,16 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
               <Button
                 variant={mission.status === "Concluída" ? "outline" : "primary"}
                 className="w-full text-xs py-2"
+                disabled={startingMissionId === mission.id}
+                onClick={(e) => void handleMissionButtonClick(e, mission)}
               >
-                {mission.status === "Concluída"
-                  ? "Rever Exercícios"
-                  : "Iniciar Missão"}
+                {startingMissionId === mission.id
+                  ? "Iniciando..."
+                  : mission.status === "Concluída"
+                    ? "Rever Exercícios"
+                    : mission.status === "Em Andamento"
+                      ? "Continuar Missão"
+                      : "Iniciar Missão"}
               </Button>
             </div>
           </Card>
@@ -1508,16 +1553,32 @@ export const ListaMissoesScreen: React.FC<ScreenProps> = ({
 export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
   selectedMissionId,
   missions,
-  setMissions,
   user,
   navigate,
   triggerToast,
+  onStartMission,
   onSubmitMissionAnswer,
 }) => {
   const mission = missions.find((m) => m.id === selectedMissionId);
   const [missionAnswer, setMissionAnswer] = useState("");
   const [missionSubmitting, setMissionSubmitting] = useState(false);
-  const [missionSubmitted, setMissionSubmitted] = useState(false);
+
+  const jaEnviou =
+    mission?.myAnswer?.status === "ENVIADA" || mission?.myAnswer?.status === "AVALIADA";
+  const foiAvaliada = mission?.myAnswer?.status === "AVALIADA";
+
+  useEffect(() => {
+    if (!mission || user.role !== "student" || mission.myAnswer) {
+      return;
+    }
+
+    onStartMission(mission).catch((error) => {
+      triggerToast(
+        error instanceof Error ? error.message : "Erro ao iniciar missão.",
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mission?.id, user.role]);
 
   if (!mission) {
     return (
@@ -1551,12 +1612,6 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
     setMissionSubmitting(true);
     try {
       await onSubmitMissionAnswer(mission, missionAnswer.trim());
-      setMissionSubmitted(true);
-      setMissions((prev) =>
-        prev.map((m) =>
-          m.id === mission.id ? { ...m, status: "Em Andamento" } : m,
-        ),
-      );
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Erro ao enviar resposta.");
     } finally {
@@ -1637,7 +1692,7 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
         {/* Right Side: Interactive Quiz (Col 8) */}
         <div className="col-span-1 lg:col-span-8">
           <Card className="p-6 md:p-8 space-y-6">
-            {!missionSubmitted ? (
+            {!jaEnviou ? (
               <div className="space-y-6">
                 <div className="flex justify-between items-center border-b border-slate-50 pb-4">
                   <h4 className="text-sm font-bold text-brand-text-main">
@@ -1687,42 +1742,80 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
                 )}
               </div>
             ) : (
-              /* Success Celebration Screen */
+              /* Resposta ja enviada: somente leitura, sem novo envio */
               <div className="text-center py-8 space-y-6">
-                <div className="w-16 h-16 rounded-full bg-emerald-50 text-brand-success flex items-center justify-center mx-auto shadow-sm">
+                <div
+                  className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-sm ${
+                    foiAvaliada
+                      ? "bg-emerald-50 text-brand-success"
+                      : "bg-blue-50 text-brand-primary"
+                  }`}
+                >
                   <Check className="w-8 h-8" />
                 </div>
 
                 <div className="space-y-2">
                   <h3 className="text-xl font-bold text-brand-text-main">
-                    Resposta enviada
+                    {foiAvaliada ? "Missão concluída" : "Resposta enviada"}
                   </h3>
                   <p className="text-sm text-brand-text-sub max-w-md mx-auto">
-                    Sua resposta para "{mission.title}" foi encaminhada para
-                    avaliação do professor.
+                    {foiAvaliada
+                      ? `Sua resposta para "${mission.title}" foi avaliada pelo professor.`
+                      : `Sua resposta para "${mission.title}" foi encaminhada para avaliação do professor.`}
                   </p>
                 </div>
 
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 max-w-sm mx-auto grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
-                      XP Conquistado
-                    </span>
-                    <span className="text-lg font-bold text-brand-primary">
-                      {mission.xpReward} XP
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
-                      Moedas Ganhas
-                    </span>
-                    <span className="text-lg font-bold text-amber-600">
-                      {mission.pointsReward} pontos
-                    </span>
-                  </div>
+                <div className="text-left max-w-md mx-auto space-y-1.5">
+                  <label className="text-xs font-semibold text-brand-text-main">
+                    Sua resposta
+                  </label>
+                  <textarea
+                    rows={5}
+                    value={mission.myAnswer?.resposta ?? ""}
+                    readOnly
+                    disabled
+                    className="w-full text-sm font-sans text-brand-text-main bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5"
+                  />
                 </div>
 
-                {mission.unlockedBadge && (
+                {foiAvaliada ? (
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 max-w-sm mx-auto grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
+                        Nota
+                      </span>
+                      <span className="text-lg font-bold text-brand-primary">
+                        {mission.myAnswer?.nota ?? 0}%
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
+                        Moedas Ganhas
+                      </span>
+                      <span className="text-lg font-bold text-amber-600">
+                        {mission.pointsReward} pontos
+                      </span>
+                    </div>
+                    {mission.myAnswer?.feedbackProfessor && (
+                      <div className="col-span-2 text-left border-t border-slate-100 pt-3">
+                        <span className="text-[10px] font-bold text-brand-text-sub uppercase block mb-1">
+                          Feedback do professor
+                        </span>
+                        <p className="text-xs text-brand-text-main">
+                          {mission.myAnswer.feedbackProfessor}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Alert
+                    type="info"
+                    title="Aguardando correção"
+                    description="Assim que o professor avaliar sua resposta, a nota e o feedback aparecerão aqui."
+                  />
+                )}
+
+                {foiAvaliada && mission.unlockedBadge && (
                   <div className="border border-amber-100 bg-amber-50/50 p-4 rounded-2xl max-w-sm mx-auto space-y-2">
                     <span className="text-xs font-bold text-amber-700 flex items-center justify-center gap-1">
                       <Award className="w-4 h-4" /> Nova Medalha Destravada!
@@ -1757,21 +1850,9 @@ export const DetalhesMissaoScreen: React.FC<ScreenProps> = ({
 // =========================================================
 // 9. RANKING SCREEN
 // =========================================================
-export const RankingScreen: React.FC<ScreenProps> = ({ ranking, user }) => {
-  // Sort ranking entries by XP descending
-  // Let's dynamically map our active user XP into the ranking spotlight!
-  const mappedRanking = ranking
-    .map((entry) => {
-      if (entry.id === "user-me") {
-        return {
-          ...entry,
-          xp: user.xp + (user.level - 5) * 2500, // accommodate higher levels dynamically
-          level: user.level,
-          name: user.name,
-        };
-      }
-      return entry;
-    })
+export const RankingScreen: React.FC<ScreenProps> = ({ ranking }) => {
+  // Ranking already comes from the backend with the real stored score for every student.
+  const mappedRanking = [...ranking]
     .sort((a, b) => b.xp - a.xp)
     .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
 
@@ -1933,10 +2014,13 @@ export const RankingScreen: React.FC<ScreenProps> = ({ ranking, user }) => {
 // =========================================================
 export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   submissions,
+  myMissions,
   triggerToast,
   disciplines,
   onCreateMission,
   onApproveMissionSubmission,
+  onUpdateMission,
+  onDeleteMission,
   isLoading,
 }) => {
   const [newTitle, setNewTitle] = useState("");
@@ -1945,6 +2029,38 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
   const [newDifficulty, setNewDifficulty] = useState<
     MissionDifficultyLabel
   >("Médio");
+
+  // Filtros da Revisão de Exercícios Práticos
+  const [filterStudent, setFilterStudent] = useState("");
+  const [filterMission, setFilterMission] = useState("Todos");
+  const [filterSubject, setFilterSubject] = useState("Todas");
+  const [filterStatus, setFilterStatus] = useState("Todos");
+  const [filterTurma, setFilterTurma] = useState("Todas");
+  const [filterDate, setFilterDate] = useState("");
+  const submissionsSectionRef = useRef<HTMLDivElement>(null);
+
+  // Modais de Meus Desafios
+  const [viewingMission, setViewingMission] = useState<MyMission | null>(null);
+  const [editingMission, setEditingMission] = useState<MyMission | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editSubject, setEditSubject] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editDifficulty, setEditDifficulty] = useState<MissionDifficultyLabel>("Médio");
+  const [editDeadline, setEditDeadline] = useState("");
+  const [editXp, setEditXp] = useState(100);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [deletingMission, setDeletingMission] = useState<MyMission | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Filtros/ordenação/paginação de Meus Desafios
+  const [myMissionSearch, setMyMissionSearch] = useState("");
+  const [myMissionSubjectFilter, setMyMissionSubjectFilter] = useState("Todas");
+  const [myMissionStatusFilter, setMyMissionStatusFilter] = useState("Todos");
+  const [myMissionSortOrder, setMyMissionSortOrder] = useState<"recent" | "oldest">(
+    "recent",
+  );
+  const [myMissionPage, setMyMissionPage] = useState(1);
+  const MY_MISSIONS_PAGE_SIZE = 5;
 
   const handleApprove = async (submission: MissionSubmission) => {
     try {
@@ -1972,6 +2088,158 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Erro ao criar missão.");
     }
+  };
+
+  const missionOptions = Array.from(
+    new Set(submissions.map((sub) => sub.missionTitle)),
+  ).sort();
+  const subjectOptions = Array.from(
+    new Set(submissions.map((sub) => sub.subject)),
+  ).sort();
+  const turmaOptions = Array.from(
+    new Set(
+      submissions
+        .map((sub) => sub.turma)
+        .filter((turma): turma is string => Boolean(turma)),
+    ),
+  ).sort();
+
+  const hasActiveFilters =
+    filterStudent !== "" ||
+    filterMission !== "Todos" ||
+    filterSubject !== "Todas" ||
+    filterStatus !== "Todos" ||
+    filterTurma !== "Todas" ||
+    filterDate !== "";
+
+  const handleClearFilters = () => {
+    setFilterStudent("");
+    setFilterMission("Todos");
+    setFilterSubject("Todas");
+    setFilterStatus("Todos");
+    setFilterTurma("Todas");
+    setFilterDate("");
+  };
+
+  const filteredSubmissions = submissions.filter((sub) => {
+    const matchesStudent =
+      !filterStudent ||
+      normalizeSearchText(sub.studentName).includes(normalizeSearchText(filterStudent));
+    const matchesMission = filterMission === "Todos" || sub.missionTitle === filterMission;
+    const matchesSubject = filterSubject === "Todas" || sub.subject === filterSubject;
+    const matchesStatus = filterStatus === "Todos" || sub.status === filterStatus;
+    const matchesTurma = filterTurma === "Todas" || sub.turma === filterTurma;
+    const matchesDate = !filterDate || sub.submittedAt.slice(0, 10) === filterDate;
+
+    return (
+      matchesStudent &&
+      matchesMission &&
+      matchesSubject &&
+      matchesStatus &&
+      matchesTurma &&
+      matchesDate
+    );
+  });
+
+  const handleViewResponses = (mission: MyMission) => {
+    setFilterMission(mission.title);
+    submissionsSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
+  const openEditModal = (mission: MyMission) => {
+    setEditingMission(mission);
+    setEditTitle(mission.title);
+    setEditSubject(mission.subject);
+    setEditDesc(mission.description);
+    setEditDifficulty(mission.difficulty);
+    setEditDeadline(mission.deadline.slice(0, 10));
+    setEditXp(mission.xpReward);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMission) return;
+
+    setIsSavingEdit(true);
+    try {
+      await onUpdateMission(editingMission.id, {
+        title: editTitle,
+        description: editDesc,
+        subject: editSubject || subjects[0],
+        difficulty: editDifficulty,
+        deadline: editDeadline ? new Date(editDeadline).toISOString() : editingMission.deadline,
+        xpReward: editXp,
+      });
+      setEditingMission(null);
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao atualizar desafio.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingMission) return;
+
+    setIsDeleting(true);
+    try {
+      await onDeleteMission(deletingMission.id);
+      setDeletingMission(null);
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Erro ao excluir desafio.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const myMissionSubjectOptions = Array.from(
+    new Set(myMissions.map((mission) => mission.subject)),
+  ).sort();
+
+  const filteredMyMissions = myMissions
+    .filter((mission) => {
+      const matchesSearch =
+        !myMissionSearch ||
+        normalizeSearchText(mission.title).includes(normalizeSearchText(myMissionSearch));
+      const matchesSubject =
+        myMissionSubjectFilter === "Todas" || mission.subject === myMissionSubjectFilter;
+      const matchesStatus =
+        myMissionStatusFilter === "Todos" ||
+        (myMissionStatusFilter === "Ativo" ? mission.active : !mission.active);
+
+      return matchesSearch && matchesSubject && matchesStatus;
+    })
+    .sort((a, b) => {
+      const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return myMissionSortOrder === "recent" ? -diff : diff;
+    });
+
+  const myMissionsTotalPages = Math.max(
+    1,
+    Math.ceil(filteredMyMissions.length / MY_MISSIONS_PAGE_SIZE),
+  );
+  const myMissionsCurrentPage = Math.min(myMissionPage, myMissionsTotalPages);
+  const paginatedMyMissions = filteredMyMissions.slice(
+    (myMissionsCurrentPage - 1) * MY_MISSIONS_PAGE_SIZE,
+    myMissionsCurrentPage * MY_MISSIONS_PAGE_SIZE,
+  );
+
+  const handleMyMissionSearchChange = (value: string) => {
+    setMyMissionSearch(value);
+    setMyMissionPage(1);
+  };
+
+  const handleMyMissionSubjectFilterChange = (value: string) => {
+    setMyMissionSubjectFilter(value);
+    setMyMissionPage(1);
+  };
+
+  const handleMyMissionStatusFilterChange = (value: string) => {
+    setMyMissionStatusFilter(value);
+    setMyMissionPage(1);
   };
 
   return (
@@ -2049,7 +2317,7 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
       {/* Content Grid: Submissions list (Col 8) & Create Mission Form (Col 4) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Pending Submissions Box */}
-        <div className="col-span-1 lg:col-span-8">
+        <div className="col-span-1 lg:col-span-8" ref={submissionsSectionRef}>
           <Card className="p-0 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50/50 flex justify-between items-center">
               <h3 className="text-sm font-bold text-brand-text-main">
@@ -2058,20 +2326,107 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
               <Badge variant="primary">Ação Necessária</Badge>
             </div>
 
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30 space-y-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-brand-text-sub" />
+                <span className="text-[10px] font-bold text-brand-text-sub uppercase tracking-wider">
+                  Filtros
+                </span>
+                {hasActiveFilters && (
+                  <button
+                    onClick={handleClearFilters}
+                    className="ml-auto text-[10px] font-semibold text-brand-danger flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> Limpar Filtros
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-brand-text-sub absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar por aluno..."
+                    value={filterStudent}
+                    onChange={(e) => setFilterStudent(e.target.value)}
+                    className="w-full text-xs pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-100"
+                  />
+                </div>
+
+                <select
+                  value={filterMission}
+                  onChange={(e) => setFilterMission(e.target.value)}
+                  className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                >
+                  <option value="Todos">Todos os Desafios</option>
+                  {missionOptions.map((title) => (
+                    <option key={title} value={title}>
+                      {title}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterSubject}
+                  onChange={(e) => setFilterSubject(e.target.value)}
+                  className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                >
+                  <option value="Todas">Todas as Disciplinas</option>
+                  {subjectOptions.map((subject) => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                >
+                  <option value="Todos">Todos os Status</option>
+                  <option value="Pendente">Aguardando Correção</option>
+                  <option value="Aprovado">Corrigido</option>
+                </select>
+
+                <select
+                  value={filterTurma}
+                  onChange={(e) => setFilterTurma(e.target.value)}
+                  className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                >
+                  <option value="Todas">Todas as Turmas</option>
+                  {turmaOptions.map((turma) => (
+                    <option key={turma} value={turma}>
+                      {turma}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="date"
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-brand-text-main border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 text-[10px] font-bold text-brand-text-sub uppercase bg-slate-50/30">
                     <th className="px-6 py-3">Estudante</th>
                     <th className="px-6 py-3">Missão</th>
+                    <th className="px-6 py-3">Resposta</th>
                     <th className="px-6 py-3">Pontuação</th>
                     <th className="px-6 py-3">Data</th>
                     <th className="px-6 py-3 text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {submissions.length > 0 ? (
-                    submissions.map((sub) => (
+                  {filteredSubmissions.length > 0 ? (
+                    filteredSubmissions.map((sub) => (
                       <tr key={sub.id} className="hover:bg-slate-50/30">
                       <td className="px-6 py-3.5 flex items-center gap-2.5">
                         <img
@@ -2083,6 +2438,11 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                       </td>
                       <td className="px-6 py-3.5 font-medium">
                         {sub.missionTitle}
+                      </td>
+                      <td className="px-6 py-3.5 max-w-xs">
+                        <span className="line-clamp-2 text-brand-text-sub" title={sub.answer}>
+                          {sub.answer}
+                        </span>
                       </td>
                       <td className="px-6 py-3.5">
                         <Badge
@@ -2117,10 +2477,12 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
                   ) : (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-6 py-8 text-center text-brand-text-sub"
                       >
-                        Nenhuma submissão pendente encontrada.
+                        {submissions.length === 0
+                          ? "Nenhuma submissão pendente encontrada."
+                          : "Nenhum resultado para os filtros aplicados."}
                       </td>
                     </tr>
                   )}
@@ -2205,6 +2567,401 @@ export const DashboardProfessorScreen: React.FC<ScreenProps> = ({
           </Card>
         </div>
       </div>
+
+      {/* Meus Desafios */}
+      <Card className="p-0 overflow-hidden">
+        <div className="border-b border-slate-100 px-6 py-4 bg-slate-50/50 flex justify-between items-center">
+          <div>
+            <h3 className="text-sm font-bold text-brand-text-main">
+              Meus Desafios
+            </h3>
+            <p className="text-[10px] text-brand-text-sub mt-0.5">
+              Todos os desafios que você criou, com o progresso dos alunos.
+            </p>
+          </div>
+          <Badge variant="primary">{myMissions.length} no total</Badge>
+        </div>
+
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30 space-y-3">
+          <div className="flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5 text-brand-text-sub" />
+            <span className="text-[10px] font-bold text-brand-text-sub uppercase tracking-wider">
+              Filtros
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-brand-text-sub absolute left-2.5 top-2.5" />
+              <input
+                type="text"
+                placeholder="Pesquisar por título..."
+                value={myMissionSearch}
+                onChange={(e) => handleMyMissionSearchChange(e.target.value)}
+                className="w-full text-xs pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-100"
+              />
+            </div>
+
+            <select
+              value={myMissionSubjectFilter}
+              onChange={(e) => handleMyMissionSubjectFilterChange(e.target.value)}
+              className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+            >
+              <option value="Todas">Todas as Disciplinas</option>
+              {myMissionSubjectOptions.map((subject) => (
+                <option key={subject} value={subject}>
+                  {subject}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={myMissionStatusFilter}
+              onChange={(e) => handleMyMissionStatusFilterChange(e.target.value)}
+              className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+            >
+              <option value="Todos">Todos os Status</option>
+              <option value="Ativo">Ativo</option>
+              <option value="Inativo">Inativo</option>
+            </select>
+
+            <select
+              value={myMissionSortOrder}
+              onChange={(e) =>
+                setMyMissionSortOrder(e.target.value as "recent" | "oldest")
+              }
+              className="text-xs text-brand-text-main bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-100"
+            >
+              <option value="recent">Mais recentes primeiro</option>
+              <option value="oldest">Mais antigos primeiro</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-brand-text-main border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 text-[10px] font-bold text-brand-text-sub uppercase bg-slate-50/30">
+                <th className="px-6 py-3">Título</th>
+                <th className="px-6 py-3">Disciplina</th>
+                <th className="px-6 py-3">Dificuldade</th>
+                <th className="px-6 py-3">XP</th>
+                <th className="px-6 py-3">Moedas</th>
+                <th className="px-6 py-3">Criado em</th>
+                <th className="px-6 py-3">Status</th>
+                <th className="px-6 py-3 text-center">Iniciaram</th>
+                <th className="px-6 py-3 text-center">Enviaram</th>
+                <th className="px-6 py-3 text-center">Concluíram</th>
+                <th className="px-6 py-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {paginatedMyMissions.length > 0 ? (
+                paginatedMyMissions.map((mission) => (
+                  <tr key={mission.id} className="hover:bg-slate-50/30">
+                    <td className="px-6 py-3.5 font-semibold max-w-[200px]">
+                      <span className="line-clamp-1" title={mission.title}>
+                        {mission.title}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <Tag subject={mission.subject} />
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <Badge
+                        variant={
+                          mission.difficulty === "Fácil"
+                            ? "success"
+                            : mission.difficulty === "Médio"
+                              ? "primary"
+                              : "danger"
+                        }
+                      >
+                        {mission.difficulty}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-3.5 text-brand-primary font-semibold">
+                      {mission.xpReward} XP
+                    </td>
+                    <td className="px-6 py-3.5 text-amber-600 font-semibold">
+                      {mission.pointsReward}
+                    </td>
+                    <td className="px-6 py-3.5 text-brand-text-sub">
+                      {new Date(mission.createdAt).toLocaleDateString("pt-BR")}
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <Badge variant={mission.active ? "success" : "slate"}>
+                        {mission.active ? "Ativo" : "Inativo"}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-3.5 text-center font-semibold">
+                      {mission.startedCount}
+                    </td>
+                    <td className="px-6 py-3.5 text-center font-semibold">
+                      {mission.receivedCount}
+                    </td>
+                    <td className="px-6 py-3.5 text-center font-semibold">
+                      {mission.completedCount}
+                    </td>
+                    <td className="px-6 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          title="Visualizar"
+                          onClick={() => setViewingMission(mission)}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 text-brand-text-sub hover:text-brand-primary transition-colors cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Editar"
+                          onClick={() => openEditModal(mission)}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 text-brand-text-sub hover:text-brand-primary transition-colors cursor-pointer"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Ver Respostas"
+                          onClick={() => handleViewResponses(mission)}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 text-brand-text-sub hover:text-brand-primary transition-colors cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Excluir"
+                          onClick={() => setDeletingMission(mission)}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-brand-text-sub hover:text-brand-danger transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="px-6 py-8 text-center text-brand-text-sub"
+                  >
+                    {myMissions.length === 0
+                      ? "Você ainda não criou nenhum desafio."
+                      : "Nenhum desafio encontrado para os filtros aplicados."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredMyMissions.length > 0 && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-6 py-3.5">
+            <span className="text-[10px] text-brand-text-sub">
+              Mostrando{" "}
+              {(myMissionsCurrentPage - 1) * MY_MISSIONS_PAGE_SIZE + 1}-
+              {Math.min(
+                myMissionsCurrentPage * MY_MISSIONS_PAGE_SIZE,
+                filteredMyMissions.length,
+              )}{" "}
+              de {filteredMyMissions.length}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setMyMissionPage((page) => Math.max(1, page - 1))}
+                disabled={myMissionsCurrentPage === 1}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors text-brand-text-sub disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[10px] font-semibold px-2">
+                {myMissionsCurrentPage} / {myMissionsTotalPages}
+              </span>
+              <button
+                onClick={() =>
+                  setMyMissionPage((page) =>
+                    Math.min(myMissionsTotalPages, page + 1),
+                  )
+                }
+                disabled={myMissionsCurrentPage === myMissionsTotalPages}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors text-brand-text-sub disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Modal: Visualizar Desafio */}
+      <Modal
+        isOpen={viewingMission !== null}
+        onClose={() => setViewingMission(null)}
+        title={viewingMission ? viewingMission.title : ""}
+      >
+        {viewingMission && (
+          <div className="space-y-3 text-sm text-brand-text-main">
+            <div className="flex justify-between">
+              <span className="text-brand-text-sub">Disciplina:</span>
+              <span className="font-semibold">{viewingMission.subject}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brand-text-sub">Dificuldade:</span>
+              <span className="font-semibold">{viewingMission.difficulty}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brand-text-sub">Recompensa:</span>
+              <span className="font-semibold">
+                {viewingMission.xpReward} XP / {viewingMission.pointsReward}{" "}
+                Moedas
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brand-text-sub">Prazo:</span>
+              <span className="font-semibold">
+                {new Date(viewingMission.deadline).toLocaleDateString("pt-BR")}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brand-text-sub">Status:</span>
+              <span className="font-semibold">
+                {viewingMission.active ? "Ativo" : "Inativo"}
+              </span>
+            </div>
+            <div className="border-t border-slate-100 pt-3">
+              <span className="text-xs font-bold text-brand-text-sub uppercase block mb-1">
+                Enunciado
+              </span>
+              <p className="text-brand-text-sub whitespace-pre-wrap">
+                {viewingMission.description}
+              </p>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: Editar Desafio */}
+      <Modal
+        isOpen={editingMission !== null}
+        onClose={() => setEditingMission(null)}
+        title={editingMission ? `Editar: ${editingMission.title}` : ""}
+      >
+        {editingMission && (
+          <form onSubmit={handleSaveEdit} className="space-y-3.5">
+            <Input
+              id="edit-miss-title"
+              label="Título do Desafio"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              required
+            />
+
+            <Select
+              id="edit-miss-subj"
+              label="Disciplina"
+              value={editSubject}
+              onChange={(e) => setEditSubject(e.target.value)}
+              options={subjects.map((item) => ({ value: item, label: item }))}
+            />
+
+            <Select
+              id="edit-miss-diff"
+              label="Dificuldade"
+              value={editDifficulty}
+              onChange={(e) =>
+                setEditDifficulty(e.target.value as MissionDifficultyLabel)
+              }
+              options={[
+                { value: "Fácil", label: "Fácil" },
+                { value: "Médio", label: "Médio" },
+                { value: "Difícil", label: "Difícil" },
+              ]}
+            />
+
+            <Input
+              id="edit-miss-deadline"
+              label="Prazo"
+              type="date"
+              value={editDeadline}
+              onChange={(e) => setEditDeadline(e.target.value)}
+              required
+            />
+
+            <Input
+              id="edit-miss-xp"
+              label="Recompensa (XP)"
+              type="number"
+              min={1}
+              value={editXp}
+              onChange={(e) => setEditXp(Number(e.target.value))}
+              required
+            />
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="edit-miss-desc"
+                className="text-sm font-medium text-brand-text-main"
+              >
+                Enunciado
+              </label>
+              <textarea
+                id="edit-miss-desc"
+                rows={4}
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                className="w-full text-sm font-sans text-brand-text-main bg-white border border-slate-200 rounded-xl px-3 py-2 transition-all focus:outline-none focus:ring-1 focus:ring-blue-100"
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-50">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingMission(null)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary" disabled={isSavingEdit}>
+                {isSavingEdit ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Modal: Excluir Desafio */}
+      <Modal
+        isOpen={deletingMission !== null}
+        onClose={() => setDeletingMission(null)}
+        title="Excluir Desafio"
+      >
+        {deletingMission && (
+          <div className="space-y-4">
+            <p className="text-sm text-brand-text-sub">
+              Tem certeza que deseja excluir o desafio{" "}
+              <strong className="text-brand-text-main">
+                "{deletingMission.title}"
+              </strong>
+              ? Essa ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeletingMission(null)}
+                disabled={isDeleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void handleConfirmDelete()}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
@@ -2365,6 +3122,360 @@ export const CentralNotificacoesScreen: React.FC<ScreenProps> = ({
             </p>
           </div>
         )}
+      </Card>
+    </div>
+  );
+};
+
+// Remove acentos e normaliza para minusculas, para a busca ignorar
+// diferencas de caixa e acentuacao (ex: "Jose" encontra "José").
+const normalizeSearchText = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+// =========================================================
+// 12. BUSCAR PERFIS
+// =========================================================
+export const BuscarPerfisScreen: React.FC<ScreenProps> = ({
+  navigate,
+  triggerToast,
+  onSearchUsers,
+}) => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [allProfiles, setAllProfiles] = useState<PublicProfileSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    onSearchUsers("")
+      .then((found) => {
+        if (!cancelado) {
+          setAllProfiles(found);
+        }
+      })
+      .catch((error) => {
+        if (!cancelado) {
+          triggerToast(
+            error instanceof Error ? error.message : "Erro ao carregar perfis.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelado) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const normalizedTerm = normalizeSearchText(searchTerm);
+  const results = !normalizedTerm
+    ? allProfiles
+    : allProfiles.filter((profile) => {
+        const roleLabel = profile.role === "teacher" ? "professor" : "aluno";
+        return (
+          normalizeSearchText(profile.name).includes(normalizedTerm) ||
+          normalizeSearchText(roleLabel).includes(normalizedTerm)
+        );
+      });
+
+  return (
+    <div className="space-y-6">
+      <div className="border-b border-slate-100 pb-5">
+        <h2 className="text-2xl font-bold text-brand-text-main tracking-tight flex items-center gap-2">
+          <Search className="w-6 h-6 text-brand-primary" /> Buscar Perfis
+        </h2>
+        <p className="text-sm text-brand-text-sub mt-0.5">
+          Encontre alunos e professores da plataforma pelo nome.
+        </p>
+      </div>
+
+      <form
+        onSubmit={(e) => e.preventDefault()}
+        className="bg-white p-4 border border-slate-100 rounded-2xl shadow-sm flex flex-col sm:flex-row gap-3"
+      >
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-brand-text-sub absolute left-3.5 top-3.5" />
+          <input
+            type="text"
+            placeholder="Digite um nome, sobrenome ou nome completo..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full text-sm font-sans pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:bg-white focus:border-brand-primary transition-all"
+          />
+        </div>
+        <Button type="submit" variant="primary">
+          Pesquisar
+        </Button>
+      </form>
+
+      {isLoading && (
+        <div className="text-center py-12 bg-white rounded-2xl border border-slate-100 space-y-2">
+          <p className="text-xs text-brand-text-sub">Carregando perfis...</p>
+        </div>
+      )}
+
+      {!isLoading && results.length === 0 && (
+        <div className="text-center py-12 bg-white rounded-2xl border border-slate-100 space-y-2">
+          <Users className="w-8 h-8 text-brand-text-sub mx-auto opacity-50" />
+          <h4 className="text-sm font-bold text-brand-text-main">
+            Nenhum usuário encontrado
+          </h4>
+          <p className="text-xs text-brand-text-sub">
+            Tente pesquisar com outro nome.
+          </p>
+        </div>
+      )}
+
+      {!isLoading && results.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {results.map((result) => (
+            <Card
+              key={result.id}
+              className="flex flex-col items-center text-center p-6 space-y-3"
+            >
+              <Avatar src={result.avatar} alt={result.name} size="lg" />
+              <div>
+                <h4 className="text-sm font-bold text-brand-text-main">
+                  {result.name}
+                </h4>
+                <Badge variant={result.role === "teacher" ? "secondary" : "primary"}>
+                  {result.role === "teacher" ? "Professor" : "Aluno"}
+                </Badge>
+              </div>
+
+              <p className="text-xs text-brand-text-sub">
+                {result.role === "teacher"
+                  ? result.subject || "Disciplina não informada"
+                  : result.schoolClass || "Turma não informada"}
+              </p>
+
+              <div className="flex gap-3 text-xs font-semibold">
+                <span className="text-brand-primary">Lvl {result.level}</span>
+                <span className="text-amber-600">{result.xp} XP</span>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => navigate("perfil-publico", result.id)}
+              >
+                Ver Perfil
+              </Button>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =========================================================
+// 13. PERFIL PÚBLICO
+// =========================================================
+export const PerfilPublicoScreen: React.FC<ScreenProps> = ({
+  selectedProfileUserId,
+  navigate,
+  triggerToast,
+  onLoadPublicProfile,
+}) => {
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    if (!selectedProfileUserId) {
+      setIsLoading(false);
+      setNotFound(true);
+      return;
+    }
+
+    let cancelado = false;
+    setIsLoading(true);
+    setNotFound(false);
+
+    onLoadPublicProfile(selectedProfileUserId)
+      .then((result) => {
+        if (!cancelado) {
+          setProfile(result);
+        }
+      })
+      .catch((error) => {
+        if (!cancelado) {
+          setNotFound(true);
+          triggerToast(
+            error instanceof Error ? error.message : "Erro ao carregar perfil.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelado) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProfileUserId]);
+
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-sm text-brand-text-sub">Carregando perfil...</p>
+      </div>
+    );
+  }
+
+  if (notFound || !profile) {
+    return (
+      <div className="text-center py-12 space-y-4">
+        <h4 className="text-sm font-bold text-brand-text-main">
+          Perfil não encontrado
+        </h4>
+        <Button
+          onClick={() => navigate("buscar-perfis")}
+          variant="primary"
+        >
+          Voltar para Buscar Perfis
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <Card className="overflow-hidden p-0 rounded-3xl relative">
+        <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-600" />
+        <div className="p-6 md:p-8 relative pt-0">
+          <div className="flex flex-col md:flex-row md:items-end justify-between -mt-12 mb-6 gap-4">
+            <div className="flex flex-col md:flex-row items-center md:items-end gap-4 text-center md:text-left">
+              <Avatar
+                src={profile.avatar}
+                alt={profile.name}
+                size="xl"
+                level={profile.role === "student" ? profile.level : undefined}
+                role={profile.role}
+              />
+              <div className="pb-1">
+                <h2 className="text-2xl font-bold text-brand-text-main">
+                  {profile.name}
+                </h2>
+                <div className="flex items-center gap-2 justify-center md:justify-start mt-1">
+                  <Badge variant={profile.role === "teacher" ? "secondary" : "primary"}>
+                    {profile.role === "teacher" ? "Professor" : "Aluno"}
+                  </Badge>
+                  <p className="text-sm font-semibold text-brand-text-sub">
+                    {profile.role === "teacher"
+                      ? profile.subject || "Disciplina não informada"
+                      : profile.schoolClass || "Turma não informada"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 self-center md:self-auto">
+              <div className="px-4 py-2 bg-amber-50 border border-amber-100 rounded-xl text-center">
+                <span className="text-[10px] font-bold text-amber-700 block uppercase">
+                  XP
+                </span>
+                <span className="text-base font-extrabold text-amber-600">
+                  {profile.xp}
+                </span>
+              </div>
+              <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl text-center">
+                <span className="text-[10px] font-bold text-blue-700 block uppercase">
+                  Nível
+                </span>
+                <span className="text-base font-extrabold text-brand-primary">
+                  Lvl {profile.level}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-50">
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100/50 text-center">
+              <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
+                Posição no Ranking
+              </span>
+              <span className="text-base font-bold text-brand-text-main">
+                #{profile.posicaoRanking}
+              </span>
+            </div>
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100/50 text-center">
+              <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
+                Desafios Concluídos
+              </span>
+              <span className="text-base font-bold text-brand-text-main">
+                {profile.completedMissionsCount}
+              </span>
+            </div>
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100/50 text-center">
+              <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
+                Publicações
+              </span>
+              <span className="text-base font-bold text-brand-text-main">
+                {profile.postsCount}
+              </span>
+            </div>
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100/50 text-center">
+              <span className="text-[10px] font-bold text-brand-text-sub uppercase block">
+                Membro desde
+              </span>
+              <span className="text-base font-bold text-brand-text-main">
+                {new Date(profile.joinedAt).toLocaleDateString("pt-BR")}
+              </span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <h3 className="text-base font-bold text-brand-text-main border-b border-slate-50 pb-3">
+          Publicações ({profile.posts.length})
+        </h3>
+
+        <div className="space-y-4">
+          {profile.posts.length > 0 ? (
+            profile.posts.map((post) => (
+              <div
+                key={post.id}
+                className="p-4 border border-slate-100 rounded-2xl bg-slate-50/50 space-y-2"
+              >
+                <span className="text-[10px] font-bold text-brand-text-sub">
+                  {new Date(post.createdAt).toLocaleDateString("pt-BR")}
+                </span>
+                <h4 className="text-xs font-bold text-brand-text-main line-clamp-1">
+                  {post.title}
+                </h4>
+                <p className="text-[11px] text-brand-text-sub line-clamp-2">
+                  {post.content}
+                </p>
+                <div className="flex gap-4 text-[10px] text-brand-text-sub font-semibold pt-1">
+                  <span>👍 {post.likesCount} curtidas</span>
+                  <span>💬 {post.commentsCount} comentários</span>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-xs text-brand-text-sub">
+                Este usuário ainda não tem publicações públicas.
+              </p>
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   );

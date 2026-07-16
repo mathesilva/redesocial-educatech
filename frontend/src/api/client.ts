@@ -79,16 +79,35 @@ export async function apiRequest<T>(
         ? payload.mensagem
         : "Nao foi possivel comunicar com a API.";
     const details = payload && "erros" in payload ? payload.erros : undefined;
+    const mensagemDetalhada = extrairMensagemDeValidacao(details) ?? message;
 
     if (response.status === 401 && authenticated) {
       clearStoredToken();
       window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
     }
 
-    throw new ApiError(message, response.status, details);
+    throw new ApiError(mensagemDetalhada, response.status, details);
   }
 
   return payload.dados;
+}
+
+// Erros de validacao (Zod) trazem a mensagem especifica de cada campo em "erros";
+// a API tambem envia uma "mensagem" generica de topo (ex: "Dados invalidos."), que
+// sozinha nao diz ao usuario o que precisa ser corrigido.
+function extrairMensagemDeValidacao(erros: unknown[] | undefined): string | undefined {
+  const primeiroErro = erros?.[0];
+
+  if (
+    primeiroErro &&
+    typeof primeiroErro === "object" &&
+    "message" in primeiroErro &&
+    typeof (primeiroErro as { message: unknown }).message === "string"
+  ) {
+    return (primeiroErro as { message: string }).message;
+  }
+
+  return undefined;
 }
 
 export const buildQueryString = (params: Record<string, string | number | undefined>) => {

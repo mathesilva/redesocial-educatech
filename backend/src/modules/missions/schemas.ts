@@ -84,12 +84,57 @@ export const avaliarRespostaMissaoSchema = z
   })
   .strict();
 
+export const listarMinhasMissoesSchema = z
+  .object({
+    pagina: z.coerce
+      .number()
+      .int("Pagina deve ser um numero inteiro.")
+      .min(1, "Pagina deve ser maior ou igual a 1.")
+      .default(1),
+    limite: z.coerce
+      .number()
+      .int("Limite deve ser um numero inteiro.")
+      .min(1, "Limite deve ser maior ou igual a 1.")
+      .default(20),
+  })
+  .strict();
+
+export const atualizarMissaoSchema = z
+  .object({
+    titulo: z
+      .string()
+      .trim()
+      .min(5, "Titulo deve ter no minimo 5 caracteres.")
+      .max(150, "Titulo deve ter no maximo 150 caracteres.")
+      .optional(),
+    descricao: z
+      .string()
+      .trim()
+      .min(10, "Descricao deve ter no minimo 10 caracteres.")
+      .optional(),
+    criteriosAvaliacao: z.string().trim().optional(),
+    prazo: z.coerce.date().optional(),
+    pontuacao: z.coerce
+      .number()
+      .int("Pontuacao deve ser um numero inteiro.")
+      .positive("Pontuacao deve ser maior que zero.")
+      .optional(),
+    dificuldade: dificuldadeMissaoSchema.optional(),
+    disciplinaId: z.string().uuid("Disciplina deve ser um UUID valido.").optional(),
+  })
+  .strict()
+  .refine((dados) => Object.keys(dados).length > 0, {
+    message: "Informe ao menos um campo para atualizar.",
+  });
+
 export const missionsSchemas = {
   avaliarResposta: avaliarRespostaMissaoSchema,
   avaliarRespostaParams: avaliarRespostaMissaoParamsSchema,
+  atualizar: atualizarMissaoSchema,
   buscarPorId: buscarMissaoPorIdSchema,
   buscarRespostaParams: buscarRespostaMissaoParamsSchema,
   criar: criarMissaoSchema,
   criarResposta: criarRespostaMissaoSchema,
   listar: listarMissoesSchema,
+  listarMinhas: listarMinhasMissoesSchema,
 };

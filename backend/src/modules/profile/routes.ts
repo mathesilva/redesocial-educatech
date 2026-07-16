@@ -8,4 +8,5 @@ export function profileRoutes(app: FastifyInstance): void {
   const autenticarUsuario = autenticar(app);
 
   app.get("/api/perfil", { preHandler: autenticarUsuario }, controller.buscarPerfil);
+  app.get("/api/perfil/:id", { preHandler: autenticarUsuario }, controller.buscarPerfilPublico);
 }

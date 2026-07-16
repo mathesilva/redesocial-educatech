@@ -77,6 +77,13 @@ export interface ExerciseQuestion {
   correctOptionIndex: number;
 }
 
+export interface MissionAnswerState {
+  resposta: string | null;
+  status: 'INICIADA' | 'ENVIADA' | 'AVALIADA';
+  nota: number | null;
+  feedbackProfessor: string | null;
+}
+
 export interface Mission {
   id: string;
   title: string;
@@ -89,6 +96,7 @@ export interface Mission {
   questions: ExerciseQuestion[];
   instructions: string;
   unlockedBadge?: Badge;
+  myAnswer?: MissionAnswerState | null;
 }
 
 export interface NotificationItem {
@@ -111,6 +119,35 @@ export interface RankingEntry {
   isMe?: boolean;
 }
 
+export interface PublicProfileSummary {
+  id: string;
+  name: string;
+  avatar: string;
+  role: UserRole;
+  schoolClass: string | null;
+  subject: string | null;
+  xp: number;
+  level: number;
+}
+
+export interface PublicProfilePost {
+  id: string;
+  title: string;
+  content: string;
+  imageUrl: string | null;
+  likesCount: number;
+  commentsCount: number;
+  createdAt: string;
+}
+
+export interface PublicProfile extends PublicProfileSummary {
+  posicaoRanking: number;
+  joinedAt: string;
+  completedMissionsCount: number;
+  postsCount: number;
+  posts: PublicProfilePost[];
+}
+
 // Teacher Dashboard stats and submissions
 export interface MissionSubmission {
   id: string;
@@ -118,8 +155,27 @@ export interface MissionSubmission {
   studentName: string;
   studentAvatar: string;
   missionTitle: string;
+  subject: string;
+  turma: string | null;
+  answer: string;
   score: string; // e.g., "5/5"
   submittedAt: string;
   xpAwarded: number;
   status: 'Aprovado' | 'Pendente';
+}
+
+export interface MyMission {
+  id: string;
+  title: string;
+  subject: string;
+  description: string;
+  difficulty: 'Fácil' | 'Médio' | 'Difícil';
+  xpReward: number;
+  pointsReward: number;
+  createdAt: string;
+  deadline: string;
+  active: boolean;
+  startedCount: number;
+  receivedCount: number;
+  completedCount: number;
 }
